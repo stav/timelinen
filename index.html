@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timelion - Timeline Visualization</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      min-height: 100vh;
+      color: #e8e8e8;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-family: 'Georgia', serif;
+      font-size: 2.5rem;
+      font-weight: 300;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #f0e6d3;
+      text-align: center;
+      margin-bottom: 2rem;
+      text-shadow: 0 2px 20px rgba(240, 230, 211, 0.3);
+    }
+
+    #timeline-container {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 1.5rem;
+      overflow-x: auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    #timeline {
+      display: block;
+      min-width: 100%;
+    }
+
+    /* Track labels */
+    .track-label {
+      font-family: 'Georgia', serif;
+      font-size: 14px;
+      fill: #c9b896;
+      font-weight: 400;
+      letter-spacing: 0.05em;
+    }
+
+    /* Centerlines */
+    .centerline {
+      stroke: rgba(255, 255, 255, 0.12);
+      stroke-width: 1;
+      stroke-dasharray: 4 4;
+    }
+
+    /* Event pills (range events) */
+    .event-pill {
+      fill: #3d5a80;
+      stroke: #5d8ab4;
+      stroke-width: 1.5;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .event-pill:hover {
+      fill: #4a6fa5;
+      stroke: #7eb3e0;
+      filter: drop-shadow(0 0 8px rgba(125, 179, 224, 0.5));
+    }
+
+    /* Point events */
+    .event-point {
+      fill: #e07a5f;
+      stroke: #f4a582;
+      stroke-width: 2;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .event-point:hover {
+      fill: #f4a582;
+      stroke: #ffd5c8;
+      filter: drop-shadow(0 0 8px rgba(244, 165, 130, 0.6));
+    }
+
+    /* Event labels */
+    .event-label {
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 11px;
+      fill: #d4d4d4;
+      pointer-events: none;
+    }
+
+    .event-label-bg {
+      fill: rgba(15, 15, 26, 0.85);
+      rx: 3;
+      ry: 3;
+    }
+
+    /* Time axis */
+    .axis-line {
+      stroke: rgba(255, 255, 255, 0.3);
+      stroke-width: 2;
+    }
+
+    .axis-tick {
+      stroke: rgba(255, 255, 255, 0.25);
+      stroke-width: 1;
+    }
+
+    .axis-label {
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 11px;
+      fill: #a0a0a0;
+      text-anchor: middle;
+    }
+
+    .axis-label-major {
+      font-size: 12px;
+      fill: #c9b896;
+      font-weight: 500;
+    }
+
+    /* Connector lines from labels to events */
+    .label-connector {
+      stroke: rgba(255, 255, 255, 0.15);
+      stroke-width: 1;
+      stroke-dasharray: 2 2;
+    }
+  </style>
+</head>
+<body>
+  <h1>Timelion</h1>
+  <div id="timeline-container">
+    <svg id="timeline"></svg>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="timeline.js"></script>
+</body>
+</html>
+
