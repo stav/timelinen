@@ -24,6 +24,21 @@
   // SVG namespace
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
+  // Current loaded data
+  let currentData = null;
+
+  /**
+   * Available data files - add your data files here
+   * Format: { name: "Display Name", file: "filename" }
+   * Files should be in the data/ folder as filename.js
+   */
+  const DATA_FILES = [
+    { name: "Scientists & Inventors", file: "scientists" },
+    // Add more data files here:
+    // { name: "World History", file: "history" },
+    // { name: "Art Movements", file: "art" },
+  ];
+
   /**
    * Parse a date string (YYYY-MM-DD) into a Date object
    */
@@ -63,7 +78,6 @@
    * Measure text width (approximate)
    */
   function measureText(text, fontSize = 11) {
-    // Approximate character width ratio
     return text.length * fontSize * 0.6;
   }
 
@@ -73,7 +87,6 @@
   function computeLabelRows(events, startDate, endDate, timelineWidth) {
     const rows = [];
 
-    // Process events sorted by start position
     const sortedEvents = [...events].sort((a, b) => {
       const aStart = parseDate(a.dates[0]);
       const bStart = parseDate(b.dates[0]);
@@ -94,7 +107,6 @@
       const labelLeft = eventCenterX - labelWidth / 2;
       const labelRight = eventCenterX + labelWidth / 2;
 
-      // Find the first row where this label fits without collision
       let placed = false;
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
         const row = rows[rowIndex];
@@ -175,130 +187,6 @@
   }
 
   /**
-   * Render a single track
-   */
-  function renderTrack(svg, trackData, trackIndex, startDate, endDate, timelineWidth, trackName) {
-    const g = createSVGElement('g', {
-      class: 'track',
-      transform: `translate(0, ${CONFIG.topPadding + trackIndex * (CONFIG.trackHeight + CONFIG.trackPadding)})`,
-    });
-
-    // Track label
-    const labelY = CONFIG.trackHeight / 2;
-    const trackLabel = createSVGElement('text', {
-      class: 'track-label',
-      x: 20,
-      y: labelY,
-      'dominant-baseline': 'middle',
-    });
-    trackLabel.textContent = trackName || `Track ${trackIndex + 1}`;
-    g.appendChild(trackLabel);
-
-    // Centerline
-    const centerline = createSVGElement('line', {
-      class: 'centerline',
-      x1: CONFIG.labelAreaWidth,
-      y1: labelY,
-      x2: CONFIG.labelAreaWidth + timelineWidth,
-      y2: labelY,
-    });
-    g.appendChild(centerline);
-
-    // Compute label rows for collision avoidance
-    const labelRows = computeLabelRows(trackData, startDate, endDate, timelineWidth);
-    const maxLabelRows = labelRows.length;
-
-    // Render events
-    for (const event of trackData) {
-      const eventStart = parseDate(event.dates[0]);
-      const isRange = event.dates.length > 1;
-      const eventEnd = isRange ? parseDate(event.dates[1]) : eventStart;
-
-      const startX = dateToX(eventStart, startDate, endDate, timelineWidth);
-      const endX = dateToX(eventEnd, startDate, endDate, timelineWidth);
-      const centerX = (startX + endX) / 2;
-
-      if (isRange) {
-        // Range event - pill shape
-        const width = Math.max(endX - startX, CONFIG.minEventWidth);
-        const pill = createSVGElement('rect', {
-          class: 'event-pill',
-          x: startX,
-          y: labelY - CONFIG.eventHeight / 2,
-          width: width,
-          height: CONFIG.eventHeight,
-          rx: CONFIG.eventHeight / 2,
-          ry: CONFIG.eventHeight / 2,
-        });
-        pill.innerHTML = `<title>${event.label}\n${event.dates[0]} → ${event.dates[1]}</title>`;
-        g.appendChild(pill);
-      } else {
-        // Point event - circle
-        const circle = createSVGElement('circle', {
-          class: 'event-point',
-          cx: startX,
-          cy: labelY,
-          r: CONFIG.pointRadius,
-        });
-        circle.innerHTML = `<title>${event.label}\n${event.dates[0]}</title>`;
-        g.appendChild(circle);
-      }
-    }
-
-    // Render labels (above events)
-    for (const row of labelRows) {
-      for (const labelInfo of row) {
-        const { event, centerX, row: rowIndex } = labelInfo;
-        const eventStart = parseDate(event.dates[0]);
-        const isRange = event.dates.length > 1;
-        const eventEnd = isRange ? parseDate(event.dates[1]) : eventStart;
-        const eventCenterX = dateToX(
-          new Date((eventStart.getTime() + eventEnd.getTime()) / 2),
-          startDate,
-          endDate,
-          timelineWidth
-        );
-
-        const labelY_offset = labelY - CONFIG.eventHeight / 2 - 8 - (maxLabelRows - 1 - rowIndex) * CONFIG.labelRowHeight;
-
-        // Connector line
-        const connector = createSVGElement('line', {
-          class: 'label-connector',
-          x1: eventCenterX,
-          y1: labelY - CONFIG.eventHeight / 2 - 2,
-          x2: eventCenterX,
-          y2: labelY_offset + 6,
-        });
-        g.appendChild(connector);
-
-        // Label background
-        const textWidth = measureText(event.label);
-        const bgRect = createSVGElement('rect', {
-          class: 'event-label-bg',
-          x: eventCenterX - textWidth / 2 - CONFIG.labelPadding,
-          y: labelY_offset - 10,
-          width: textWidth + CONFIG.labelPadding * 2,
-          height: 14,
-        });
-        g.appendChild(bgRect);
-
-        // Label text
-        const labelText = createSVGElement('text', {
-          class: 'event-label',
-          x: eventCenterX,
-          y: labelY_offset,
-          'text-anchor': 'middle',
-        });
-        labelText.textContent = event.label;
-        g.appendChild(labelText);
-      }
-    }
-
-    svg.appendChild(g);
-    return maxLabelRows;
-  }
-
-  /**
    * Render the time axis
    */
   function renderAxis(svg, startDate, endDate, timelineWidth, yPosition) {
@@ -307,7 +195,6 @@
       transform: `translate(0, ${yPosition})`,
     });
 
-    // Main axis line
     const axisLine = createSVGElement('line', {
       class: 'axis-line',
       x1: CONFIG.labelAreaWidth,
@@ -317,7 +204,6 @@
     });
     g.appendChild(axisLine);
 
-    // Ticks
     const ticks = generateAxisTicks(startDate, endDate);
     for (const tick of ticks) {
       const x = dateToX(tick.date, startDate, endDate, timelineWidth);
@@ -345,21 +231,46 @@
   }
 
   /**
+   * Show loading message
+   */
+  function showLoading() {
+    const svg = document.getElementById('timeline');
+    svg.innerHTML = '';
+    const container = document.getElementById('timeline-container');
+    container.innerHTML = '<div class="loading-message">Loading timeline data...</div>';
+  }
+
+  /**
+   * Show error message
+   */
+  function showError(message) {
+    const container = document.getElementById('timeline-container');
+    container.innerHTML = `<div class="error-message">${message}</div>`;
+  }
+
+  /**
    * Main render function
    */
   function renderTimeline() {
+    const container = document.getElementById('timeline-container');
+    
+    // Restore SVG if it was replaced with a message
+    if (!document.getElementById('timeline')) {
+      container.innerHTML = '<svg id="timeline"></svg>';
+    }
+    
     const svg = document.getElementById('timeline');
-    if (!svg) {
-      console.error('Timeline SVG element not found');
+    svg.innerHTML = '';
+
+    if (!currentData) {
+      showError('No data loaded. Select a data file above.');
       return;
     }
 
-    // Clear existing content
-    svg.innerHTML = '';
+    const { tracks, visibleWindow } = currentData;
 
-    // Get data from global scope
-    if (typeof tracks === 'undefined' || typeof visibleWindow === 'undefined') {
-      console.error('Timeline data not found. Make sure data.js is loaded.');
+    if (!tracks || !visibleWindow) {
+      showError('Invalid data format. Expected tracks and visibleWindow.');
       return;
     }
 
@@ -367,16 +278,15 @@
     const endDate = parseDate(visibleWindow.endDate);
     const numTracks = tracks.length;
 
-    // Calculate dimensions
-    const containerWidth = document.getElementById('timeline-container').clientWidth - 48;
+    const containerWidth = container.clientWidth - 48;
     const timelineWidth = Math.max(containerWidth - CONFIG.labelAreaWidth, 800);
 
-    // First pass: compute label rows for each track to determine heights
-    const trackLabelRows = tracks.map((trackData, i) => {
+    // Compute label rows for each track
+    const trackLabelRows = tracks.map((trackData) => {
       return computeLabelRows(trackData.events || trackData, startDate, endDate, timelineWidth).length;
     });
 
-    // Calculate total height needed
+    // Calculate total height
     let totalHeight = CONFIG.topPadding;
     const trackPositions = [];
 
@@ -388,7 +298,6 @@
 
     totalHeight += CONFIG.axisHeight;
 
-    // Set SVG dimensions
     svg.setAttribute('width', CONFIG.labelAreaWidth + timelineWidth + 40);
     svg.setAttribute('height', totalHeight);
     svg.setAttribute('viewBox', `0 0 ${CONFIG.labelAreaWidth + timelineWidth + 40} ${totalHeight}`);
@@ -403,8 +312,8 @@
         transform: `translate(0, ${trackPositions[i]})`,
       });
 
-      // Track label
       const labelY = CONFIG.trackHeight / 2;
+      
       if (trackName) {
         const trackLabel = createSVGElement('text', {
           class: 'track-label',
@@ -416,7 +325,6 @@
         g.appendChild(trackLabel);
       }
 
-      // Centerline
       const centerline = createSVGElement('line', {
         class: 'centerline',
         x1: CONFIG.labelAreaWidth,
@@ -426,11 +334,9 @@
       });
       g.appendChild(centerline);
 
-      // Compute label rows for collision avoidance
       const labelRows = computeLabelRows(trackData, startDate, endDate, timelineWidth);
       const maxLabelRows = labelRows.length;
 
-      // Create a flat map of event -> label info
       const eventLabelMap = new Map();
       for (const row of labelRows) {
         for (const labelInfo of row) {
@@ -438,7 +344,6 @@
         }
       }
 
-      // Render events
       for (const event of trackData) {
         const eventStart = parseDate(event.dates[0]);
         const isRange = event.dates.length > 1;
@@ -448,7 +353,6 @@
         const endX = dateToX(eventEnd, startDate, endDate, timelineWidth);
 
         if (isRange) {
-          // Range event - pill shape
           const width = Math.max(endX - startX, CONFIG.minEventWidth);
           const pill = createSVGElement('rect', {
             class: 'event-pill',
@@ -462,7 +366,6 @@
           pill.innerHTML = `<title>${event.label}\n${event.dates[0]} → ${event.dates[1]}</title>`;
           g.appendChild(pill);
         } else {
-          // Point event - circle
           const circle = createSVGElement('circle', {
             class: 'event-point',
             cx: startX,
@@ -473,10 +376,9 @@
           g.appendChild(circle);
         }
 
-        // Render label
         const labelInfo = eventLabelMap.get(event);
         if (labelInfo) {
-          const { centerX, row: rowIndex } = labelInfo;
+          const { row: rowIndex } = labelInfo;
           const eventCenterX = dateToX(
             new Date((eventStart.getTime() + eventEnd.getTime()) / 2),
             startDate,
@@ -486,7 +388,6 @@
 
           const labelYOffset = labelY - CONFIG.eventHeight / 2 - 8 - (maxLabelRows - 1 - rowIndex) * CONFIG.labelRowHeight;
 
-          // Connector line
           const connector = createSVGElement('line', {
             class: 'label-connector',
             x1: eventCenterX,
@@ -496,7 +397,6 @@
           });
           g.appendChild(connector);
 
-          // Label background
           const textWidth = measureText(event.label);
           const bgRect = createSVGElement('rect', {
             class: 'event-label-bg',
@@ -507,7 +407,6 @@
           });
           g.appendChild(bgRect);
 
-          // Label text
           const labelText = createSVGElement('text', {
             class: 'event-label',
             x: eventCenterX,
@@ -522,16 +421,95 @@
       svg.appendChild(g);
     }
 
-    // Render axis at the bottom
     const axisY = totalHeight - CONFIG.axisHeight + 10;
     renderAxis(svg, startDate, endDate, timelineWidth, axisY);
   }
 
+  /**
+   * Load a data file dynamically
+   */
+  function loadDataFile(filename) {
+    showLoading();
+
+    // Remove any previously loaded data script
+    const existingScript = document.getElementById('data-script');
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    // Clear global variables
+    if (window.tracks) delete window.tracks;
+    if (window.visibleWindow) delete window.visibleWindow;
+
+    const script = document.createElement('script');
+    script.id = 'data-script';
+    script.src = `data/${filename}.js`;
+    
+    script.onload = () => {
+      // Check if data was loaded
+      if (typeof window.tracks !== 'undefined' && typeof window.visibleWindow !== 'undefined') {
+        currentData = {
+          tracks: window.tracks,
+          visibleWindow: window.visibleWindow,
+        };
+        
+        // Update URL without reload
+        const url = new URL(window.location);
+        url.searchParams.set('data', filename);
+        window.history.replaceState({}, '', url);
+        
+        renderTimeline();
+      } else {
+        showError(`Data file loaded but missing 'tracks' or 'visibleWindow' variables.`);
+      }
+    };
+
+    script.onerror = () => {
+      showError(`Failed to load data file: data/${filename}.js`);
+    };
+
+    document.body.appendChild(script);
+  }
+
+  /**
+   * Initialize the data file selector
+   */
+  function initDataSelector() {
+    const select = document.getElementById('data-file');
+    if (!select) return;
+
+    // Populate options
+    for (const dataFile of DATA_FILES) {
+      const option = document.createElement('option');
+      option.value = dataFile.file;
+      option.textContent = dataFile.name;
+      select.appendChild(option);
+    }
+
+    // Get initial file from URL or use first file
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialFile = urlParams.get('data') || DATA_FILES[0]?.file;
+
+    if (initialFile) {
+      select.value = initialFile;
+      loadDataFile(initialFile);
+    }
+
+    // Handle selection change
+    select.addEventListener('change', (e) => {
+      loadDataFile(e.target.value);
+    });
+  }
+
   // Initialize on load
+  function init() {
+    initDataSelector();
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', renderTimeline);
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    renderTimeline();
+    init();
   }
 
   // Handle window resize
@@ -541,7 +519,7 @@
     resizeTimeout = setTimeout(renderTimeline, 150);
   });
 
-  // Expose for manual re-render
+  // Expose for manual operations
   window.renderTimeline = renderTimeline;
+  window.loadDataFile = loadDataFile;
 })();
-

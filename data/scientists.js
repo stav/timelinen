@@ -1,19 +1,8 @@
 /**
- * Timelion - Sample Data
- * 
- * Data structure:
- * - tracks: Array of track objects, each containing:
- *   - name: Track label shown on the left
- *   - events: Array of event objects with:
- *     - dates: Array with 1 element (point event) or 2 elements (range event)
- *     - label: Text label for the event
- * 
- * - visibleWindow: Object defining the visible date range
- *   - startDate: Start of visible range (YYYY-MM-DD)
- *   - endDate: End of visible range (YYYY-MM-DD)
+ * Scientists & Inventors Timeline
  */
 
-const tracks = [
+window.tracks = [
   {
     name: "Nikola Tesla",
     events: [
@@ -185,8 +174,7 @@ const tracks = [
   },
 ];
 
-const visibleWindow = {
+window.visibleWindow = {
   startDate: "1840-01-01",
   endDate: "1960-01-01",
 };
-
