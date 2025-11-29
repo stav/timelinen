@@ -22,6 +22,24 @@ window.tracks = [
     ],
   },
   {
+    name: "Peter James Almeroth",
+    events: [
+      {
+        dates: ["1872-03-10", "1947-05-31"],
+        label: null,
+      },
+    ],
+  },
+  {
+    name: "Elizabeth Frances Dwyer",
+    events: [
+      {
+        dates: ["1883-11-12", "1941-01-27"],
+        label: null,
+      },
+    ],
+  },
+  {
     name: "Pete",
     events: [
       {
