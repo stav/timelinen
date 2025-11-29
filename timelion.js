@@ -95,6 +95,9 @@
     });
 
     for (const event of sortedEvents) {
+      // Skip events with null labels
+      if (event.label === null) continue;
+
       const eventStart = parseDate(event.dates[0]);
       const eventEnd = event.dates.length > 1 ? parseDate(event.dates[1]) : eventStart;
       const eventCenterX = dateToX(
@@ -364,7 +367,10 @@
             rx: CONFIG.eventHeight / 2,
             ry: CONFIG.eventHeight / 2,
           });
-          pill.innerHTML = `<title>${event.label}\n${event.dates[0]} → ${event.dates[1]}</title>`;
+          const rangeTooltip = event.label !== null 
+            ? `${event.label}\n${event.dates[0]} → ${event.dates[1]}`
+            : `${event.dates[0]} → ${event.dates[1]}`;
+          pill.innerHTML = `<title>${rangeTooltip}</title>`;
           g.appendChild(pill);
         } else {
           const circle = createSVGElement('circle', {
@@ -373,7 +379,10 @@
             cy: labelY,
             r: CONFIG.pointRadius,
           });
-          circle.innerHTML = `<title>${event.label}\n${event.dates[0]}</title>`;
+          const pointTooltip = event.label !== null
+            ? `${event.label}\n${event.dates[0]}`
+            : event.dates[0];
+          circle.innerHTML = `<title>${pointTooltip}</title>`;
           g.appendChild(circle);
         }
 

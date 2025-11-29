@@ -8,7 +8,7 @@ window.tracks = [
     events: [
       {
         dates: ["1940-02-21", "2020-12-31"],
-        label: "Life",
+        label: null,
       },
     ],
   },
@@ -17,7 +17,7 @@ window.tracks = [
     events: [
       {
         dates: ["1945-11-15", "2015-12-31"],
-        label: "Life",
+        label: null,
       },
     ],
   },
@@ -26,7 +26,7 @@ window.tracks = [
     events: [
       {
         dates: ["1967-12-29", "2024-12-31"],
-        label: "Life",
+        label: null,
       },
     ],
   },
@@ -35,7 +35,7 @@ window.tracks = [
     events: [
       {
         dates: ["1965-03-01", "2024-12-31"],
-        label: "Life",
+        label: null,
       },
       {
         dates: ["1965-03-26"],
@@ -73,7 +73,7 @@ window.tracks = [
     events: [
       {
         dates: ["1979-05-15", "2024-12-31"],
-        label: "Life",
+        label: null,
       },
     ],
   },
@@ -82,7 +82,7 @@ window.tracks = [
     events: [
       {
         dates: ["2012-07-04", "2024-12-31"],
-        label: "Life",
+        label: null,
       },
       {
         dates: ["2014-01-01", "2015-12-31"],
@@ -95,7 +95,7 @@ window.tracks = [
     events: [
       {
         dates: ["2019-06-17", "2024-12-31"],
-        label: "Life",
+        label: null,
       },
       {
         dates: ["2018-09-17"],
