@@ -37,6 +37,13 @@ window.familyTree = {
       // Her parents not in tree (could add maternal great-grandparents here)
     },
 
+    // === MATERNAL GRANDPARENTS (Gen -2) ===
+    "bernice": {
+      name: "Bernice B Brennan",
+      birth: "1905-09-01",
+      death: "1996-07-01",
+    },
+
     // === PARENTS (Gen -1) ===
     "pete": {
       name: "Pete",
@@ -48,7 +55,7 @@ window.familyTree = {
       name: "Suzie",
       birth: "1945-11-15",
       death: "2015-12-31",
-      // Her parents not in tree
+      parentIds: ["bernice"],
     },
 
     // === FOCAL GENERATION (Gen 0) ===
@@ -119,6 +126,11 @@ window.familyTree = {
       id: "peter-elizabeth",
       partners: ["peter", "elizabeth"],
       children: ["pete"],
+    },
+    {
+      id: "bernice-unknown",
+      partners: ["bernice"], // Father not in tree
+      children: ["suzie"],
     },
     {
       id: "suzie-unknown",
