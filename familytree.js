@@ -7,16 +7,14 @@
   'use strict';
 
   const CONFIG = {
-    generationHeight: 80,      // Vertical space per generation
+    trackHeight: 50,           // Vertical space per track (person or couple)
     personHeight: 20,          // Height of lifespan bar
-    personGap: 12,             // Horizontal gap between people in same generation
-    unionGap: 60,              // Horizontal gap between family units
     labelAreaWidth: 0,         // No left label area (names on bars)
     axisHeight: 50,            // Height of time axis
-    connectorDropdown: 25,     // How far down connectors drop before going horizontal
     topPadding: 40,            // Top padding
     sidePadding: 40,           // Side padding
     minBarWidth: 40,           // Minimum width for lifespan bars
+    connectorPadding: 15,      // Space between bar bottom and connector start
   };
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -133,47 +131,89 @@
   // ============ LAYOUT COMPUTATION ============
 
   /**
+   * Build tracks: each person gets their own track, except married couples share a track.
+   * Returns array of tracks, each track is { people: [ids], generation, unionId? }
+   */
+  function buildTracks(familyTree, generations) {
+    const { people, unions } = familyTree;
+    const tracks = [];
+    const personToTrack = {}; // personId -> track index
+    
+    // First, create tracks for married couples
+    for (const union of unions) {
+      if (union.partners.length >= 2) {
+        const [p1, p2] = union.partners;
+        // Both partners must exist and be in same generation
+        if (people[p1] && people[p2] && generations[p1] === generations[p2]) {
+          const trackIdx = tracks.length;
+          tracks.push({
+            people: [p1, p2],
+            generation: generations[p1],
+            unionId: union.id,
+            union: union,
+          });
+          personToTrack[p1] = trackIdx;
+          personToTrack[p2] = trackIdx;
+        }
+      }
+    }
+    
+    // Then, create individual tracks for everyone not in a couple track
+    for (const [personId, person] of Object.entries(people)) {
+      if (personToTrack[personId] === undefined) {
+        const trackIdx = tracks.length;
+        tracks.push({
+          people: [personId],
+          generation: generations[personId],
+          unionId: null,
+        });
+        personToTrack[personId] = trackIdx;
+      }
+    }
+    
+    // Sort tracks by generation, then by earliest birth date in track
+    tracks.sort((a, b) => {
+      if (a.generation !== b.generation) return a.generation - b.generation;
+      const aMinBirth = Math.min(...a.people.map(id => parseDate(people[id].birth).getTime()));
+      const bMinBirth = Math.min(...b.people.map(id => parseDate(people[id].birth).getTime()));
+      return aMinBirth - bMinBirth;
+    });
+    
+    // Update personToTrack after sorting
+    for (let i = 0; i < tracks.length; i++) {
+      for (const personId of tracks[i].people) {
+        personToTrack[personId] = i;
+      }
+    }
+    
+    return { tracks, personToTrack };
+  }
+
+  /**
    * Compute layout positions for all people and connectors.
-   * Groups people by generation, positions family units, computes connector paths.
+   * Each person/couple gets their own track (horizontal row).
    */
   function computeLayout(familyTree, startDate, endDate, timelineWidth) {
     const { people, unions } = familyTree;
     const generations = computeGenerations(familyTree);
     
-    // Group people by generation
-    const genGroups = {};
-    for (const [personId, gen] of Object.entries(generations)) {
-      if (!genGroups[gen]) genGroups[gen] = [];
-      genGroups[gen].push(personId);
+    // Build tracks
+    const { tracks, personToTrack } = buildTracks(familyTree, generations);
+    
+    // Compute Y position for each track
+    const trackY = {};
+    for (let i = 0; i < tracks.length; i++) {
+      trackY[i] = CONFIG.topPadding + i * CONFIG.trackHeight;
     }
     
-    // Sort generations
-    const genNumbers = Object.keys(genGroups).map(Number).sort((a, b) => a - b);
-    const minGen = Math.min(...genNumbers);
-    const maxGen = Math.max(...genNumbers);
-    
-    // Compute Y position for each generation
-    const genY = {};
-    for (let g = minGen; g <= maxGen; g++) {
-      genY[g] = CONFIG.topPadding + (g - minGen) * CONFIG.generationHeight;
-    }
-    
-    // Position people within each generation
-    // Strategy: sort by birth date, group by unions
+    // Position people
     const personLayout = {};
     
-    for (const gen of genNumbers) {
-      const peopleInGen = genGroups[gen] || [];
+    for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
+      const track = tracks[trackIdx];
+      const y = trackY[trackIdx];
       
-      // Sort by birth date
-      peopleInGen.sort((a, b) => {
-        const birthA = parseDate(people[a].birth);
-        const birthB = parseDate(people[b].birth);
-        return birthA.getTime() - birthB.getTime();
-      });
-      
-      // Assign X positions based on birth/death dates (time-based positioning)
-      for (const personId of peopleInGen) {
+      for (const personId of track.people) {
         const person = people[personId];
         const birthDate = parseDate(person.birth);
         const deathDate = person.death ? parseDate(person.death) : endDate;
@@ -185,13 +225,15 @@
           id: personId,
           person,
           generation: generations[personId],
+          trackIdx,
+          track,
           x: x1,
-          y: genY[generations[personId]],
+          y: y,
           width: Math.max(x2 - x1, CONFIG.minBarWidth),
           barX1: x1,
           barX2: x2,
           centerX: (x1 + x2) / 2,
-          centerY: genY[generations[personId]] + CONFIG.personHeight / 2,
+          centerY: y + CONFIG.personHeight / 2,
         };
       }
     }
@@ -203,35 +245,17 @@
         .map(id => personLayout[id])
         .filter(Boolean);
       
-      if (partnerLayouts.length >= 2) {
-        // Spouse connector: horizontal line between partners
-        const p1 = partnerLayouts[0];
-        const p2 = partnerLayouts[1];
-        
-        // Find overlap period
-        const overlapStart = Math.max(p1.barX1, p2.barX1);
-        const overlapEnd = Math.min(p1.barX2, p2.barX2);
-        const connectorX = (overlapStart + overlapEnd) / 2;
-        
-        unionConnectors.push({
-          type: 'spouse',
-          union,
-          partners: partnerLayouts,
-          x: connectorX,
-          y: p1.y + CONFIG.personHeight,
-        });
-      }
-      
       // Parent-child connectors
       const childLayouts = (union.children || [])
         .map(id => personLayout[id])
         .filter(Boolean)
-        .filter(c => !people[c.id].isPet); // Exclude pets from main connectors
+        .filter(c => !people[c.id].isPet);
       
       if (partnerLayouts.length > 0 && childLayouts.length > 0) {
-        const parentY = partnerLayouts[0].y + CONFIG.personHeight;
+        const parentTrack = partnerLayouts[0];
+        const parentY = parentTrack.y + CONFIG.personHeight;
         
-        // Find parent center point (between spouses if two, or single parent center)
+        // Find parent center point (overlap of partners' lifespans)
         let parentCenterX;
         if (partnerLayouts.length >= 2) {
           const p1 = partnerLayouts[0];
@@ -249,11 +273,27 @@
             union,
             parentCenterX,
             parentY,
-            childCenterX: child.centerX,
+            parentTrackIdx: parentTrack.trackIdx,
+            childCenterX: child.barX1,  // Use birth date position, not center
             childY: child.y,
+            childTrackIdx: child.trackIdx,
             child,
           });
         }
+      }
+    }
+    
+    // Get generation boundaries for labels
+    const genNumbers = [...new Set(Object.values(generations))].sort((a, b) => a - b);
+    const minGen = Math.min(...genNumbers);
+    const maxGen = Math.max(...genNumbers);
+    
+    // Map generation to first track in that generation
+    const genFirstTrack = {};
+    for (let i = 0; i < tracks.length; i++) {
+      const gen = tracks[i].generation;
+      if (genFirstTrack[gen] === undefined) {
+        genFirstTrack[gen] = i;
       }
     }
     
@@ -261,11 +301,14 @@
       personLayout,
       unionConnectors,
       generations,
-      genY,
+      tracks,
+      trackY,
+      personToTrack,
       genNumbers,
+      genFirstTrack,
       minGen,
       maxGen,
-      totalHeight: CONFIG.topPadding + (maxGen - minGen + 1) * CONFIG.generationHeight + CONFIG.axisHeight,
+      totalHeight: CONFIG.topPadding + tracks.length * CONFIG.trackHeight + CONFIG.axisHeight,
     };
   }
 
@@ -355,62 +398,78 @@
   function renderConnectors(svg, layout) {
     const g = createSVGElement('g', { class: 'connectors' });
     
+    // Group connectors by union so we can draw shared horizontal lines
+    const connectorsByUnion = {};
     for (const connector of layout.unionConnectors) {
-      if (connector.type === 'spouse') {
-        // Horizontal line between spouses during overlap period
-        const { partners, x, y } = connector;
-        if (partners.length >= 2) {
-          const p1 = partners[0];
-          const p2 = partners[1];
-          
-          // Find the overlap region
-          const overlapStart = Math.max(p1.barX1, p2.barX1);
-          const overlapEnd = Math.min(p1.barX2, p2.barX2);
-          
-          if (overlapEnd > overlapStart) {
-            // Small marriage connector at overlap midpoint
-            const midX = (overlapStart + overlapEnd) / 2;
-            const connectorY = p1.y + CONFIG.personHeight + 5;
-            
-            const line = createSVGElement('line', {
-              class: 'spouse-connector',
-              x1: midX - 8,
-              y1: connectorY,
-              x2: midX + 8,
-              y2: connectorY,
-              stroke: '#e07a5f',
-              'stroke-width': 2,
-            });
-            g.appendChild(line);
-            
-            // Marriage symbol (small heart or dot)
-            const symbol = createSVGElement('circle', {
-              cx: midX,
-              cy: connectorY,
-              r: 3,
-              fill: '#e07a5f',
-            });
-            g.appendChild(symbol);
-          }
+      if (connector.type === 'parent-child') {
+        const unionId = connector.union.id;
+        if (!connectorsByUnion[unionId]) {
+          connectorsByUnion[unionId] = [];
         }
-      } else if (connector.type === 'parent-child') {
-        const { parentCenterX, parentY, childCenterX, childY } = connector;
-        
-        // Vertical line down from parent
-        const dropY = parentY + CONFIG.connectorDropdown;
-        
-        // Path: down from parents, horizontal to child's X, then down to child
-        const path = createSVGElement('path', {
-          class: 'parent-child-connector',
-          d: `M ${parentCenterX} ${parentY + 8} 
-              L ${parentCenterX} ${dropY} 
-              L ${childCenterX} ${dropY} 
-              L ${childCenterX} ${childY - 2}`,
-          fill: 'none',
-          stroke: 'rgba(255, 255, 255, 0.25)',
+        connectorsByUnion[unionId].push(connector);
+      }
+    }
+    
+    // Draw connectors for each union
+    for (const [unionId, connectors] of Object.entries(connectorsByUnion)) {
+      if (connectors.length === 0) continue;
+      
+      const { parentCenterX, parentY } = connectors[0];
+      
+      // Horizontal line Y is just below the parent track (in the gap between generations)
+      const horizontalY = parentY + CONFIG.connectorPadding;
+      
+      // Find the leftmost and rightmost child X positions
+      const childXs = connectors.map(c => c.childCenterX);
+      const minChildX = Math.min(...childXs);
+      const maxChildX = Math.max(...childXs);
+      
+      // Draw vertical line down from parent to horizontal line level
+      const parentDrop = createSVGElement('line', {
+        x1: parentCenterX,
+        y1: parentY + 4,
+        x2: parentCenterX,
+        y2: horizontalY,
+        stroke: 'rgba(200, 180, 150, 0.6)',
+        'stroke-width': 1.5,
+      });
+      g.appendChild(parentDrop);
+      
+      // Draw horizontal line spanning all children
+      if (connectors.length > 1 || parentCenterX !== minChildX) {
+        const horizLine = createSVGElement('line', {
+          x1: Math.min(parentCenterX, minChildX),
+          y1: horizontalY,
+          x2: Math.max(parentCenterX, maxChildX),
+          y2: horizontalY,
+          stroke: 'rgba(200, 180, 150, 0.6)',
           'stroke-width': 1.5,
         });
-        g.appendChild(path);
+        g.appendChild(horizLine);
+      }
+      
+      // Draw vertical drops to each child
+      for (const connector of connectors) {
+        const { childCenterX, childY } = connector;
+        
+        const childDrop = createSVGElement('line', {
+          x1: childCenterX,
+          y1: horizontalY,
+          x2: childCenterX,
+          y2: childY - 2,
+          stroke: 'rgba(200, 180, 150, 0.6)',
+          'stroke-width': 1.5,
+        });
+        g.appendChild(childDrop);
+        
+        // Small dot at child end
+        const dot = createSVGElement('circle', {
+          cx: childCenterX,
+          cy: childY - 2,
+          r: 3,
+          fill: 'rgba(200, 180, 150, 0.8)',
+        });
+        g.appendChild(dot);
       }
     }
     
@@ -431,7 +490,11 @@
     };
     
     for (const gen of layout.genNumbers) {
-      const y = layout.genY[gen] + CONFIG.personHeight / 2;
+      // Get Y position from first track in this generation
+      const firstTrackIdx = layout.genFirstTrack[gen];
+      if (firstTrackIdx === undefined) continue;
+      
+      const y = layout.trackY[firstTrackIdx] + CONFIG.personHeight / 2;
       const label = createSVGElement('text', {
         class: 'gen-label',
         x: 10,
@@ -524,10 +587,6 @@
     }
 
     const { familyTree, visibleWindow } = currentData;
-    
-    // Debug: log generations
-    const debugGens = computeGenerations(familyTree);
-    console.log('Generations:', JSON.stringify(debugGens));
     const startDate = parseDate(visibleWindow.startDate);
     const endDate = parseDate(visibleWindow.endDate);
 
@@ -537,13 +596,6 @@
     // Compute layout
     const layout = computeLayout(familyTree, startDate, endDate, timelineWidth);
     computedLayout = layout;
-    
-    // Debug layout
-    console.log('Timeline width:', timelineWidth);
-    console.log('Layout persons:', Object.keys(layout.personLayout).length);
-    for (const [id, p] of Object.entries(layout.personLayout)) {
-      console.log(`  ${id}: gen=${p.generation}, x=${p.barX1.toFixed(0)}-${p.barX2.toFixed(0)}, y=${p.y}`);
-    }
 
     // Set SVG size
     const svgWidth = CONFIG.sidePadding * 2 + timelineWidth;
@@ -553,17 +605,17 @@
     svg.setAttribute('height', svgHeight);
     svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
 
-    // Render generation labels
+    // Render generation labels (behind everything)
     renderGenerationLabels(svg, layout);
 
-    // Render connectors first (behind people)
-    renderConnectors(svg, layout);
-
-    // Render people
+    // Render people bars
     for (const [personId, personLayout] of Object.entries(layout.personLayout)) {
       const isFocal = personId === familyTree.focalPerson;
       renderPersonBar(svg, personLayout, startDate, endDate, timelineWidth, isFocal);
     }
+
+    // Render connectors on top of bars so they're visible
+    renderConnectors(svg, layout);
 
     // Render time axis
     const axisY = layout.totalHeight - CONFIG.axisHeight + 10;
