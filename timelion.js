@@ -9,7 +9,6 @@
   const CONFIG = {
     trackHeight: 50,           // Vertical space per track (person or couple)
     personHeight: 20,          // Height of lifespan bar
-    labelAreaWidth: 0,         // No left label area (names on bars)
     axisHeight: 50,            // Height of time axis
     topPadding: 40,            // Top padding
     sidePadding: 40,           // Side padding
@@ -60,6 +59,13 @@
       el.setAttribute(key, value);
     }
     return el;
+  }
+
+  function getTimelineWidth() {
+    const container = document.getElementById('timeline-container');
+    if (!container) return 800;
+    const containerWidth = container.clientWidth - 48;
+    return Math.max(containerWidth - CONFIG.sidePadding * 2, 800);
   }
 
   // ============ GENERATION COMPUTATION ============
@@ -169,7 +175,6 @@
             people: [p1, p2],
             generation: generations[p1],
             unionId: union.id,
-            union: union,
           });
           personToTrack[p1] = trackIdx;
           personToTrack[p2] = trackIdx;
@@ -267,8 +272,7 @@
       // Parent-child connectors
       const childLayouts = (union.children || [])
         .map(id => personLayout[id])
-        .filter(Boolean)
-        .filter(c => !people[c.id].isPet);
+        .filter(Boolean);
       
       if (partnerLayouts.length > 0 && childLayouts.length > 0) {
         const parentTrack = partnerLayouts[0];
@@ -341,7 +345,6 @@
     const g = createSVGElement('g', { class: 'person' });
     
     // Determine bar style
-    const isPet = person.isPet;
     const isDeceased = person.death && parseDate(person.death) < new Date();
     const birthYear = parseInt(person.birth.split('-')[0]);
     
@@ -353,9 +356,6 @@
     if (isFocal) {
       fillColor = '#4a7c59';
       strokeColor = '#7cb890';
-    } else if (isPet) {
-      fillColor = '#6b5b73';
-      strokeColor = '#9d8ba7';
     } else if (isDeceased || needsFadeOut) {
       fillColor = '#3d5a80';
       strokeColor = '#5d8ab4';
@@ -750,8 +750,7 @@
     const startDate = parseDate(visibleWindow.startDate);
     const endDate = parseDate(visibleWindow.endDate);
 
-    const containerWidth = container.clientWidth - 48;
-    const timelineWidth = Math.max(containerWidth - CONFIG.sidePadding * 2, 800);
+    const timelineWidth = getTimelineWidth();
 
     // Compute layout
     const layout = computeLayout(familyTree, startDate, endDate, timelineWidth);
@@ -851,9 +850,7 @@
         const rect = svg.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         
-        // Calculate timeline width (same as in renderFamilyTree)
-        const containerWidth = container.clientWidth - 48;
-        const timelineWidth = Math.max(containerWidth - CONFIG.sidePadding * 2, 800);
+        const timelineWidth = getTimelineWidth();
         
         // Calculate where in the timeline the mouse is (0 to 1)
         const timelineX = mouseX - CONFIG.sidePadding;
