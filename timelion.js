@@ -99,17 +99,11 @@
       if (event.label === null) continue;
 
       const eventStart = parseDate(event.dates[0]);
-      const eventEnd = event.dates.length > 1 ? parseDate(event.dates[1]) : eventStart;
-      const eventCenterX = dateToX(
-        new Date((eventStart.getTime() + eventEnd.getTime()) / 2),
-        startDate,
-        endDate,
-        timelineWidth
-      );
+      const eventStartX = dateToX(eventStart, startDate, endDate, timelineWidth);
 
       const labelWidth = measureText(event.label) + CONFIG.labelPadding * 2;
-      const labelLeft = eventCenterX - labelWidth / 2;
-      const labelRight = eventCenterX + labelWidth / 2;
+      const labelLeft = eventStartX;
+      const labelRight = eventStartX + labelWidth;
 
       let placed = false;
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
@@ -129,7 +123,7 @@
             event,
             left: labelLeft,
             right: labelRight,
-            centerX: eventCenterX,
+            startX: eventStartX,
             row: rowIndex,
           });
           placed = true;
@@ -142,7 +136,7 @@
           event,
           left: labelLeft,
           right: labelRight,
-          centerX: eventCenterX,
+          startX: eventStartX,
           row: rows.length,
         }]);
       }
@@ -388,21 +382,15 @@
 
         const labelInfo = eventLabelMap.get(event);
         if (labelInfo) {
-          const { row: rowIndex } = labelInfo;
-          const eventCenterX = dateToX(
-            new Date((eventStart.getTime() + eventEnd.getTime()) / 2),
-            startDate,
-            endDate,
-            timelineWidth
-          );
+          const { row: rowIndex, startX: labelStartX } = labelInfo;
 
           const labelYOffset = labelY - CONFIG.eventHeight / 2 - 8 - (maxLabelRows - 1 - rowIndex) * CONFIG.labelRowHeight;
 
           const connector = createSVGElement('line', {
             class: 'label-connector',
-            x1: eventCenterX,
+            x1: startX,
             y1: labelY - CONFIG.eventHeight / 2 - 2,
-            x2: eventCenterX,
+            x2: startX,
             y2: labelYOffset + 6,
           });
           g.appendChild(connector);
@@ -410,7 +398,7 @@
           const textWidth = measureText(event.label);
           const bgRect = createSVGElement('rect', {
             class: 'event-label-bg',
-            x: eventCenterX - textWidth / 2 - CONFIG.labelPadding,
+            x: labelStartX - CONFIG.labelPadding,
             y: labelYOffset - 10,
             width: textWidth + CONFIG.labelPadding * 2,
             height: 14,
@@ -419,9 +407,9 @@
 
           const labelText = createSVGElement('text', {
             class: 'event-label',
-            x: eventCenterX,
+            x: labelStartX,
             y: labelYOffset,
-            'text-anchor': 'middle',
+            'text-anchor': 'start',
           });
           labelText.textContent = event.label;
           g.appendChild(labelText);
