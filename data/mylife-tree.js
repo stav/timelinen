@@ -85,7 +85,7 @@ window.familyTree = {
     "cullen": {
       name: "Cullen",
       birth: "1994-11-25",
-      parentIds: ["maryann"], // Assuming Mary Ann's child - adjust if wrong
+      parentIds: ["david"],
     },
     "daniel": {
       name: "Daniel",
@@ -138,8 +138,8 @@ window.familyTree = {
       children: ["daniel", "carbon"],
     },
     {
-      id: "maryann-unknown",
-      partners: ["maryann"],
+      id: "david-unknown",
+      partners: ["david"],
       children: ["cullen"],
     },
   ],
