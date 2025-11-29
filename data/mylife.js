@@ -22,10 +22,28 @@ window.tracks = [
     ],
   },
   {
+    name: "Mary Ann",
+    events: [
+      {
+        dates: ["1963-03-15", "2024-12-31"],
+        label: null,
+      },
+    ],
+  },
+  {
     name: "David",
     events: [
       {
         dates: ["1967-12-29", "2024-12-31"],
+        label: null,
+      },
+    ],
+  },
+  {
+    name: "Cullen",
+    events: [
+      {
+        dates: ["1994-11-25", "2024-12-31"],
         label: null,
       },
     ],
