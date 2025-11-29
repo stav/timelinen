@@ -280,26 +280,8 @@
     <kbd>Ctrl</kbd>+scroll to zoom time · <kbd>Alt</kbd>+scroll to zoom view · Drag to pan · <kbd>Esc</kbd> to reset
   </div>
 
-  <script src="familytree.js"></script>
-  <script>
-    // Override DATA_FILES to only show Almeroth tree
-    // The familytree.js will load from URL param or first file
-    (function() {
-      // Auto-load the almeroth-tree data
-      if (typeof loadFamilyTreeFile === 'function') {
-        loadFamilyTreeFile('almeroth-tree');
-      } else {
-        // Wait for familytree.js to initialize
-        window.addEventListener('load', () => {
-          setTimeout(() => {
-            if (typeof loadFamilyTreeFile === 'function') {
-              loadFamilyTreeFile('almeroth-tree');
-            }
-          }, 100);
-        });
-      }
-    })();
-  </script>
+  <script src="almeroth-tree.js"></script>
+  <script src="timelion.js"></script>
 </body>
 </html>
 
