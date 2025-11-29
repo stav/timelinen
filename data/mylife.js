@@ -4,8 +4,12 @@
 
 window.tracks = [
   {
-    name: "My Life",
+    name: "Tata",
     events: [
+      {
+        dates: ["1965-03-01", "2024-12-31"],
+        label: "Life",
+      },
       {
         dates: ["1965-03-26"],
         label: "Spark of Life",
