@@ -13,6 +13,24 @@ window.tracks = [
     ],
   },
   {
+    name: "Suzie",
+    events: [
+      {
+        dates: ["1945-11-15", "2015-12-31"],
+        label: "Life",
+      },
+    ],
+  },
+  {
+    name: "David",
+    events: [
+      {
+        dates: ["1967-12-29", "2024-12-31"],
+        label: "Life",
+      },
+    ],
+  },
+  {
     name: "Tata",
     events: [
       {
