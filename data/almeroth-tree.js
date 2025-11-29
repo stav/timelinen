@@ -190,6 +190,7 @@ window.familyTree = {
     "I0002": {
         "name": "Peter Jerome Almeroth",
         "birth": "1940-02-21",
+        "death": "2020-12-15",
         "parentIds": [
             "I0004",
             "I0005"
