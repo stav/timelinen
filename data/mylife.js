@@ -4,6 +4,24 @@
 
 window.tracks = [
   {
+    name: "August",
+    events: [
+      {
+        dates: ["1837-05-01", "1917-12-31"],
+        label: null,
+      },
+    ],
+  },
+  {
+    name: "Johanna",
+    events: [
+      {
+        dates: ["1843-03-01", "1926-12-31"],
+        label: null,
+      },
+    ],
+  },
+  {
     name: "Pete",
     events: [
       {
@@ -57,7 +75,7 @@ window.tracks = [
       },
       {
         dates: ["1965-03-26"],
-        label: "Spark of Life",
+        label: null,
       },
       {
         dates: ["1980-01-01", "1984-06-01"],
@@ -117,13 +135,13 @@ window.tracks = [
       },
       {
         dates: ["2018-09-17"],
-        label: "Spark",
+        label: null,
       },
     ],
   },
 ];
 
 window.visibleWindow = {
-  startDate: "1900-01-01",
+  startDate: "1830-01-01",
   endDate: "2026-01-01",
 };
