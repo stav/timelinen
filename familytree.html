@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Family Tree Timeline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Charter', 'Georgia', serif;
+      background: linear-gradient(145deg, #1a1a1a 0%, #2d2d2d 50%, #1f1f1f 100%);
+      min-height: 100vh;
+      color: #e8e8e8;
+      padding: 2rem;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    h1 {
+      font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+      font-size: 1.8rem;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: #d4c4a8;
+      text-shadow: 0 2px 15px rgba(212, 196, 168, 0.2);
+    }
+
+    h1 span {
+      font-weight: 300;
+      color: #8a8070;
+      font-size: 0.9em;
+    }
+
+    .data-selector {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .data-selector label {
+      font-size: 0.8rem;
+      color: #8a8070;
+      letter-spacing: 0.05em;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .data-selector select {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      color: #e8e8e8;
+      padding: 0.5rem 2rem 0.5rem 0.75rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a8070' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.5rem center;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .data-selector select:hover {
+      border-color: rgba(255, 255, 255, 0.25);
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .data-selector select:focus {
+      outline: none;
+      border-color: #8a7355;
+      box-shadow: 0 0 0 2px rgba(138, 115, 85, 0.25);
+    }
+
+    #timeline-container {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 1.5rem;
+      overflow-x: auto;
+      box-shadow: 
+        0 4px 24px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    #timeline {
+      display: block;
+      min-width: 100%;
+    }
+
+    .loading-message {
+      text-align: center;
+      padding: 3rem;
+      color: #8a8070;
+      font-style: italic;
+    }
+
+    .error-message {
+      text-align: center;
+      padding: 3rem;
+      color: #c97a63;
+    }
+
+    /* Person bars */
+    .person-bar {
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .person-bar:hover {
+      filter: brightness(1.2);
+      stroke-width: 2.5;
+    }
+
+    .person:hover .person-label-inside,
+    .person:hover .person-label-outside {
+      fill: #fff;
+    }
+
+    /* Connectors */
+    .parent-child-connector {
+      transition: stroke 0.15s ease;
+    }
+
+    .spouse-connector {
+      transition: stroke 0.15s ease;
+    }
+
+    /* Generation labels */
+    .gen-label {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      user-select: none;
+    }
+
+    /* Legend */
+    .legend {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      font-size: 0.75rem;
+      color: #8a8070;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .legend-swatch {
+      width: 24px;
+      height: 12px;
+      border-radius: 6px;
+    }
+
+    .legend-swatch.focal {
+      background: #4a7c59;
+      border: 1px solid #7cb890;
+    }
+
+    .legend-swatch.living {
+      background: #4a6670;
+      border: 1px solid #6a9aaa;
+    }
+
+    .legend-swatch.deceased {
+      background: #3d5a80;
+      border: 1px solid #5d8ab4;
+    }
+
+    .legend-swatch.pet {
+      background: #6b5b73;
+      border: 1px solid #9d8ba7;
+    }
+
+    .legend-connector {
+      width: 24px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    .legend-marriage {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #e07a5f;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Family Tree <span>× Timeline</span></h1>
+    <div class="data-selector">
+      <label for="data-file">Data:</label>
+      <select id="data-file"></select>
+    </div>
+  </div>
+  
+  <div id="timeline-container">
+    <svg id="timeline"></svg>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-swatch focal"></div>
+      <span>Focal Person</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch living"></div>
+      <span>Living</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch deceased"></div>
+      <span>Deceased</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch pet"></div>
+      <span>Pet</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-connector"></div>
+      <span>Descent</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-marriage"></div>
+      <span>Union</span>
+    </div>
+  </div>
+
+  <script src="familytree.js"></script>
+</body>
+</html>
+
