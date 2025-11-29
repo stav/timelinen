@@ -35,6 +35,7 @@
   const DATA_FILES = [
     { name: "Scientists & Inventors", file: "scientists" },
     { name: "My Life", file: "mylife" },
+    { name: "Almeroth Family Tree", file: "almeroth-tree" },
     // Add more data files here:
     // { name: "World History", file: "history" },
     // { name: "Art Movements", file: "art" },

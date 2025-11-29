@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Almeroth Family Tree</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Crimson Pro', Georgia, serif;
+      background: 
+        radial-gradient(ellipse at 20% 0%, rgba(139, 90, 43, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(101, 67, 33, 0.12) 0%, transparent 50%),
+        linear-gradient(170deg, #1c1914 0%, #252019 40%, #1a1612 100%);
+      min-height: 100vh;
+      color: #e8e0d4;
+      padding: 2rem;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+      border-bottom: 1px solid rgba(184, 156, 107, 0.2);
+      padding-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-family: 'Cinzel', serif;
+      font-size: 2.2rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      color: #d4c4a8;
+      text-shadow: 0 2px 20px rgba(212, 196, 168, 0.25);
+    }
+
+    h1 .surname {
+      font-weight: 500;
+      color: #e8d9c0;
+    }
+
+    h1 .subtitle {
+      display: block;
+      font-size: 0.45em;
+      font-family: 'Crimson Pro', serif;
+      font-weight: 300;
+      font-style: italic;
+      letter-spacing: 0.15em;
+      color: #8a7a60;
+      margin-top: 0.3rem;
+    }
+
+    .header-info {
+      text-align: right;
+      font-size: 0.85rem;
+      color: #8a7a60;
+      font-style: italic;
+    }
+
+    .header-info strong {
+      color: #b89c6b;
+      font-weight: 400;
+    }
+
+    #timeline-container {
+      background: 
+        linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.35) 100%),
+        rgba(20, 17, 14, 0.6);
+      border: 1px solid rgba(184, 156, 107, 0.15);
+      border-radius: 4px;
+      padding: 1.5rem;
+      overflow-x: auto;
+      box-shadow: 
+        0 8px 40px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.02),
+        inset 0 0 60px rgba(0, 0, 0, 0.3);
+    }
+
+    #timeline {
+      display: block;
+      min-width: 100%;
+    }
+
+    .loading-message {
+      text-align: center;
+      padding: 4rem;
+      color: #8a7a60;
+      font-style: italic;
+      font-size: 1.1rem;
+    }
+
+    .error-message {
+      text-align: center;
+      padding: 4rem;
+      color: #c9846a;
+    }
+
+    /* Person bars */
+    .person-bar {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+
+    .person-bar:hover {
+      filter: brightness(1.25) saturate(1.1);
+      stroke-width: 2.5;
+    }
+
+    .person:hover .person-label-inside,
+    .person:hover .person-label-outside {
+      fill: #fff;
+    }
+
+    /* Generation labels */
+    .gen-label {
+      font-family: 'Crimson Pro', serif;
+      user-select: none;
+    }
+
+    /* Legend */
+    .legend {
+      margin-top: 1.5rem;
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      font-size: 0.8rem;
+      color: #8a7a60;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(184, 156, 107, 0.12);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .legend-swatch {
+      width: 28px;
+      height: 14px;
+      border-radius: 7px;
+    }
+
+    .legend-swatch.focal {
+      background: linear-gradient(135deg, #6b5a3e 0%, #8b7355 100%);
+      border: 1px solid #a89070;
+    }
+
+    .legend-swatch.living {
+      background: linear-gradient(135deg, #4a5a4a 0%, #5a6a5a 100%);
+      border: 1px solid #7a8a7a;
+    }
+
+    .legend-swatch.deceased {
+      background: linear-gradient(135deg, #4a5565 0%, #5a6575 100%);
+      border: 1px solid #7a8595;
+    }
+
+    .legend-connector {
+      width: 28px;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(184, 156, 107, 0.3), rgba(184, 156, 107, 0.6), rgba(184, 156, 107, 0.3));
+    }
+
+    .legend-spacer {
+      flex-grow: 1;
+    }
+
+    .view-stats {
+      gap: 1.5rem;
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      color: #5a5040;
+      font-size: 0.7rem;
+    }
+
+    .view-stat code {
+      color: #9a8a6a;
+      background: rgba(184, 156, 107, 0.08);
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+    }
+
+    #timeline-container {
+      cursor: grab;
+    }
+
+    #timeline-container.dragging {
+      cursor: grabbing;
+    }
+
+    /* Scrollbar styling */
+    #timeline-container::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    #timeline-container::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+
+    #timeline-container::-webkit-scrollbar-thumb {
+      background: rgba(184, 156, 107, 0.3);
+      border-radius: 4px;
+    }
+
+    #timeline-container::-webkit-scrollbar-thumb:hover {
+      background: rgba(184, 156, 107, 0.5);
+    }
+
+    .controls-hint {
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      color: #5a5040;
+      text-align: center;
+      font-style: italic;
+    }
+
+    .controls-hint kbd {
+      background: rgba(184, 156, 107, 0.1);
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      border: 1px solid rgba(184, 156, 107, 0.2);
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      The <span class="surname">Almeroth</span> Family
+      <span class="subtitle">A Genealogical Timeline · 1837–Present</span>
+    </h1>
+    <div class="header-info">
+      <div><strong>108</strong> family members</div>
+      <div><strong>23</strong> married couples</div>
+    </div>
+  </div>
+  
+  <div id="timeline-container">
+    <svg id="timeline"></svg>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-swatch focal"></div>
+      <span>Focal Person</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch living"></div>
+      <span>Living</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch deceased"></div>
+      <span>Deceased</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-connector"></div>
+      <span>Descent</span>
+    </div>
+    <div class="legend-spacer"></div>
+    <div class="legend-item view-stats">
+      <span class="view-stat">scale: <code id="stat-scale">1.00x</code></span>
+      <span class="view-stat">zoom: <code id="stat-zoom">1.00</code></span>
+      <span class="view-stat">pan: <code id="stat-pan">0, 0</code></span>
+    </div>
+  </div>
+
+  <div class="controls-hint">
+    <kbd>Ctrl</kbd>+scroll to zoom time · <kbd>Alt</kbd>+scroll to zoom view · Drag to pan · <kbd>Esc</kbd> to reset
+  </div>
+
+  <script src="familytree.js"></script>
+  <script>
+    // Override DATA_FILES to only show Almeroth tree
+    // The familytree.js will load from URL param or first file
+    (function() {
+      // Auto-load the almeroth-tree data
+      if (typeof loadFamilyTreeFile === 'function') {
+        loadFamilyTreeFile('almeroth-tree');
+      } else {
+        // Wait for familytree.js to initialize
+        window.addEventListener('load', () => {
+          setTimeout(() => {
+            if (typeof loadFamilyTreeFile === 'function') {
+              loadFamilyTreeFile('almeroth-tree');
+            }
+          }, 100);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
+

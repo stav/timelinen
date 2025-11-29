@@ -699,6 +699,7 @@
 
   const DATA_FILES = [
     { name: "My Family Tree", file: "mylife-tree", type: "familyTree" },
+    { name: "Almeroth Family", file: "almeroth-tree", type: "familyTree" },
   ];
 
   function initDataSelector() {
