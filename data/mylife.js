@@ -27,6 +27,14 @@ window.tracks = [
         label: "Met Mama",
       },
       {
+        dates: ["2011-01-01", "2019-12-31"],
+        label: "Shub",
+      },
+      {
+        dates: ["2012-07-04"],
+        label: "Cabon born",
+      },
+      {
         dates: ["2014-01-01", "2015-12-31"],
         label: "Carbon Rehab",
       },
