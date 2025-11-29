@@ -552,6 +552,7 @@
   // Initialize on load
   function init() {
     initDataSelector();
+    initZoomHandler();
   }
 
   if (document.readyState === 'loading') {
@@ -566,6 +567,81 @@
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(renderTimeline, 150);
   });
+
+  /**
+   * Handle Ctrl+wheel to zoom the time scale
+   * Zooms toward the mouse position
+   */
+  function initZoomHandler() {
+    const container = document.getElementById('timeline-container');
+    if (!container) return;
+
+    container.addEventListener('wheel', (e) => {
+      // Only handle Ctrl+wheel
+      if (!e.ctrlKey) return;
+      
+      // Prevent default browser zoom
+      e.preventDefault();
+
+      if (!currentData || !currentData.visibleWindow) return;
+
+      const startDate = parseDate(currentData.visibleWindow.startDate);
+      const endDate = parseDate(currentData.visibleWindow.endDate);
+      const totalSpan = getTimeSpan(startDate, endDate);
+
+      // Get mouse position relative to timeline area
+      const svg = document.getElementById('timeline');
+      if (!svg) return;
+      
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      
+      // Calculate timeline width (same as in renderTimeline)
+      const containerWidth = container.clientWidth - 48;
+      const timelineWidth = Math.max(containerWidth - CONFIG.labelAreaWidth, 800);
+      
+      // Calculate where in the timeline the mouse is (0 to 1)
+      const timelineX = mouseX - CONFIG.labelAreaWidth;
+      const mouseRatio = Math.max(0, Math.min(1, timelineX / timelineWidth));
+      
+      // Calculate the date under the mouse
+      const mouseTime = startDate.getTime() + (mouseRatio * totalSpan);
+
+      // Zoom factor: scroll up = zoom in (smaller range), scroll down = zoom out (larger range)
+      const zoomFactor = e.deltaY > 0 ? 1.15 : 0.87; // ~15% zoom per scroll step
+      
+      // Calculate new span
+      const newSpan = totalSpan * zoomFactor;
+      
+      // Minimum span: 30 days, maximum span: 2000 years
+      const minSpan = 30 * 24 * 60 * 60 * 1000;
+      const maxSpan = 2000 * 365.25 * 24 * 60 * 60 * 1000;
+      
+      if (newSpan < minSpan || newSpan > maxSpan) return;
+
+      // Calculate new start and end dates, keeping the mouse position fixed
+      const newStartTime = mouseTime - (mouseRatio * newSpan);
+      const newEndTime = mouseTime + ((1 - mouseRatio) * newSpan);
+      
+      const newStartDate = new Date(newStartTime);
+      const newEndDate = new Date(newEndTime);
+
+      // Format dates back to YYYY-MM-DD strings
+      const formatDate = (d) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      // Update the visible window
+      currentData.visibleWindow.startDate = formatDate(newStartDate);
+      currentData.visibleWindow.endDate = formatDate(newEndDate);
+
+      // Re-render
+      renderTimeline();
+    }, { passive: false });
+  }
 
   // Expose for manual operations
   window.renderTimeline = renderTimeline;

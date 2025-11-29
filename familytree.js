@@ -38,6 +38,9 @@
   let panStartX = 0;
   let panStartY = 0;
 
+  // Original time scale (for reset)
+  let originalVisibleWindow = null;
+
   // ============ UTILITY FUNCTIONS ============
 
   function parseDate(dateStr) {
@@ -669,6 +672,12 @@
           visibleWindow: window.visibleWindow,
         };
         
+        // Store original visible window for reset
+        originalVisibleWindow = {
+          startDate: window.visibleWindow.startDate,
+          endDate: window.visibleWindow.endDate,
+        };
+        
         const url = new URL(window.location);
         url.searchParams.set('data', filename);
         window.history.replaceState({}, '', url);
@@ -742,13 +751,71 @@
     const container = document.getElementById('timeline-container');
     if (!container) return;
 
-    // Wheel events: Alt+wheel = zoom, Shift+wheel = horizontal pan, wheel = vertical pan
+    // Wheel events: Alt+wheel = visual zoom, Ctrl+wheel = time scale zoom, Shift+wheel = horizontal pan, wheel = vertical pan
     container.addEventListener('wheel', (e) => {
       const svg = document.getElementById('timeline');
       if (!svg) return;
 
-      if (e.altKey) {
-        // Alt+wheel: zoom
+      if (e.ctrlKey) {
+        // Ctrl+wheel: time scale zoom (adjusts start/end dates)
+        e.preventDefault();
+        
+        if (!currentData || !currentData.visibleWindow) return;
+
+        const startDate = parseDate(currentData.visibleWindow.startDate);
+        const endDate = parseDate(currentData.visibleWindow.endDate);
+        const totalSpan = endDate.getTime() - startDate.getTime();
+
+        // Get mouse position relative to timeline area
+        const rect = svg.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        
+        // Calculate timeline width (same as in renderFamilyTree)
+        const containerWidth = container.clientWidth - 48;
+        const timelineWidth = Math.max(containerWidth - CONFIG.sidePadding * 2, 800);
+        
+        // Calculate where in the timeline the mouse is (0 to 1)
+        const timelineX = mouseX - CONFIG.sidePadding;
+        const mouseRatio = Math.max(0, Math.min(1, timelineX / timelineWidth));
+        
+        // Calculate the date under the mouse
+        const mouseTime = startDate.getTime() + (mouseRatio * totalSpan);
+
+        // Zoom factor: scroll up = zoom in (smaller range), scroll down = zoom out (larger range)
+        const zoomFactor = e.deltaY > 0 ? 1.15 : 0.87; // ~15% zoom per scroll step
+        
+        // Calculate new span
+        const newSpan = totalSpan * zoomFactor;
+        
+        // Minimum span: 30 days, maximum span: 2000 years
+        const minSpan = 30 * 24 * 60 * 60 * 1000;
+        const maxSpan = 2000 * 365.25 * 24 * 60 * 60 * 1000;
+        
+        if (newSpan < minSpan || newSpan > maxSpan) return;
+
+        // Calculate new start and end dates, keeping the mouse position fixed
+        const newStartTime = mouseTime - (mouseRatio * newSpan);
+        const newEndTime = mouseTime + ((1 - mouseRatio) * newSpan);
+        
+        const newStartDate = new Date(newStartTime);
+        const newEndDate = new Date(newEndTime);
+
+        // Format dates back to YYYY-MM-DD strings
+        const formatDate = (d) => {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        // Update the visible window
+        currentData.visibleWindow.startDate = formatDate(newStartDate);
+        currentData.visibleWindow.endDate = formatDate(newEndDate);
+
+        // Re-render
+        renderFamilyTree();
+      } else if (e.altKey) {
+        // Alt+wheel: visual zoom (transform-based)
         e.preventDefault();
         
         const rect = svg.getBoundingClientRect();
@@ -828,9 +895,24 @@
   function updateViewStats() {
     const zoomEl = document.getElementById('stat-zoom');
     const panEl = document.getElementById('stat-pan');
+    const scaleEl = document.getElementById('stat-scale');
     
     if (zoomEl) zoomEl.textContent = zoomLevel.toFixed(2);
     if (panEl) panEl.textContent = `${Math.round(panX)}, ${Math.round(panY)}`;
+    
+    // Calculate and display time scale factor
+    if (scaleEl && currentData && currentData.visibleWindow && originalVisibleWindow) {
+      const currentStart = parseDate(currentData.visibleWindow.startDate);
+      const currentEnd = parseDate(currentData.visibleWindow.endDate);
+      const originalStart = parseDate(originalVisibleWindow.startDate);
+      const originalEnd = parseDate(originalVisibleWindow.endDate);
+      
+      const currentSpan = currentEnd.getTime() - currentStart.getTime();
+      const originalSpan = originalEnd.getTime() - originalStart.getTime();
+      
+      const scaleFactor = originalSpan / currentSpan;
+      scaleEl.textContent = scaleFactor.toFixed(2) + 'x';
+    }
   }
 
   function applyZoomTransform() {
@@ -845,7 +927,15 @@
     zoomLevel = 1;
     panX = 0;
     panY = 0;
-    applyZoomTransform();
+    
+    // Also reset time scale to original
+    if (currentData && currentData.visibleWindow && originalVisibleWindow) {
+      currentData.visibleWindow.startDate = originalVisibleWindow.startDate;
+      currentData.visibleWindow.endDate = originalVisibleWindow.endDate;
+      renderFamilyTree();
+    } else {
+      applyZoomTransform();
+    }
   }
 
   // Expose for debugging
