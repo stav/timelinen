@@ -333,6 +333,9 @@
 
   // ============ RENDERING ============
 
+  // Counter for unique gradient IDs
+  let gradientCounter = 0;
+
   function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, isFocal = false) {
     const { id, person, x, y, width, barX1, barX2 } = layout;
     const g = createSVGElement('g', { class: 'person' });
@@ -340,6 +343,11 @@
     // Determine bar style
     const isPet = person.isPet;
     const isDeceased = person.death && parseDate(person.death) < new Date();
+    const birthYear = parseInt(person.birth.split('-')[0]);
+    
+    // Check if this person needs a fade-out effect:
+    // Born before 1920 and no death date recorded
+    const needsFadeOut = !person.death && birthYear < 1920;
     
     let fillColor, strokeColor;
     if (isFocal) {
@@ -348,7 +356,7 @@
     } else if (isPet) {
       fillColor = '#6b5b73';
       strokeColor = '#9d8ba7';
-    } else if (isDeceased) {
+    } else if (isDeceased || needsFadeOut) {
       fillColor = '#3d5a80';
       strokeColor = '#5d8ab4';
     } else {
@@ -356,32 +364,148 @@
       strokeColor = '#6a9aaa';
     }
     
+    let fill = fillColor;
+    let strokeFill = strokeColor;
+    
+    // For fade-out, we'll adjust the bar end position and create gradient
+    let effectiveBarX2 = barX2;
+    
+    // Create fade-out gradient for historical figures without death dates
+    if (needsFadeOut) {
+      const gradientId = `fade-${id}-${gradientCounter++}`;
+      const strokeGradientId = `fade-stroke-${id}-${gradientCounter}`;
+      
+      // Calculate where ages 70 and 80 fall
+      const birthDate = parseDate(person.birth);
+      const age70Date = new Date(birthDate.getTime());
+      age70Date.setFullYear(age70Date.getFullYear() + 70);
+      const age80Date = new Date(birthDate.getTime());
+      age80Date.setFullYear(age80Date.getFullYear() + 80);
+      
+      const age70X = dateToX(age70Date, startDate, endDate, timelineWidth);
+      const age80X = dateToX(age80Date, startDate, endDate, timelineWidth);
+      
+      // Limit bar to age 80
+      effectiveBarX2 = Math.min(barX2, age80X);
+      
+      const barStartX = barX1;
+      const barWidth = effectiveBarX2 - barStartX;
+      
+      // Calculate fade start as percentage of the shortened bar width
+      // Fade starts at age 70, ends at age 80 (which is now the bar end)
+      const fadeStartPercent = Math.max(0, Math.min(100, ((age70X - barStartX) / barWidth) * 100));
+      
+      // Get or create defs element
+      let defs = svg.querySelector('defs');
+      if (!defs) {
+        defs = createSVGElement('defs');
+        svg.insertBefore(defs, svg.firstChild);
+      }
+      
+      // Create gradient for fill
+      const gradient = createSVGElement('linearGradient', {
+        id: gradientId,
+        x1: '0%', y1: '0%', x2: '100%', y2: '0%',
+      });
+      
+      // Solid color until age 70
+      const stop1 = createSVGElement('stop', {
+        offset: `${fadeStartPercent}%`,
+        'stop-color': fillColor,
+        'stop-opacity': '1',
+      });
+      // Fade to fully transparent by age 80
+      const stop2 = createSVGElement('stop', {
+        offset: '100%',
+        'stop-color': fillColor,
+        'stop-opacity': '0',
+      });
+      
+      gradient.appendChild(stop1);
+      gradient.appendChild(stop2);
+      defs.appendChild(gradient);
+      
+      // Create gradient for stroke
+      const strokeGradient = createSVGElement('linearGradient', {
+        id: strokeGradientId,
+        x1: '0%', y1: '0%', x2: '100%', y2: '0%',
+      });
+      
+      const strokeStop1 = createSVGElement('stop', {
+        offset: `${fadeStartPercent}%`,
+        'stop-color': strokeColor,
+        'stop-opacity': '1',
+      });
+      const strokeStop2 = createSVGElement('stop', {
+        offset: '100%',
+        'stop-color': strokeColor,
+        'stop-opacity': '0',
+      });
+      
+      strokeGradient.appendChild(strokeStop1);
+      strokeGradient.appendChild(strokeStop2);
+      defs.appendChild(strokeGradient);
+      
+      fill = `url(#${gradientId})`;
+      strokeFill = `url(#${strokeGradientId})`;
+    }
+    
     // Lifespan bar
     const bar = createSVGElement('rect', {
       class: 'person-bar',
       x: barX1,
       y: y,
-      width: Math.max(barX2 - barX1, CONFIG.minBarWidth),
+      width: Math.max(effectiveBarX2 - barX1, CONFIG.minBarWidth),
       height: CONFIG.personHeight,
       rx: CONFIG.personHeight / 2,
       ry: CONFIG.personHeight / 2,
-      fill: fillColor,
-      stroke: strokeColor,
+      fill: fill,
+      stroke: strokeFill,
       'stroke-width': 1.5,
     });
     
+    // Calculate age
+    const birthDate = parseDate(person.birth);
+    let age = null;
+    let ageLabel = '';
+    
+    if (person.death) {
+      // Age at death
+      const deathDate = parseDate(person.death);
+      age = deathDate.getFullYear() - birthDate.getFullYear();
+      // Adjust if death was before birthday that year
+      const deathMonth = deathDate.getMonth();
+      const birthMonth = birthDate.getMonth();
+      if (deathMonth < birthMonth || (deathMonth === birthMonth && deathDate.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      ageLabel = `${age}`;
+    } else if (!needsFadeOut) {
+      // Current age for living people
+      const now = new Date();
+      age = now.getFullYear() - birthDate.getFullYear();
+      const nowMonth = now.getMonth();
+      const birthMonth = birthDate.getMonth();
+      if (nowMonth < birthMonth || (nowMonth === birthMonth && now.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      ageLabel = `${age}`;
+    }
+    // For needsFadeOut (historical, unknown death), don't show age
+    
     // Tooltip
-    const birthYear = person.birth.split('-')[0];
-    const deathYear = person.death ? person.death.split('-')[0] : 'present';
-    bar.innerHTML = `<title>${person.name}\n${birthYear} – ${deathYear}</title>`;
+    const deathYear = person.death ? person.death.split('-')[0] : (needsFadeOut ? '?' : 'present');
+    const ageInfo = ageLabel ? ` (age ${ageLabel})` : (needsFadeOut ? ' (age unknown)' : '');
+    bar.innerHTML = `<title>${person.name}\n${birthYear} – ${deathYear}${ageInfo}</title>`;
     
     g.appendChild(bar);
     
     // Name label (inside bar if fits, otherwise above)
     const labelWidth = person.name.length * 7;
+    const ageLabelWidth = ageLabel ? ageLabel.length * 7 + 12 : 0; // Extra padding for age
     const barWidth = barX2 - barX1;
     
-    if (labelWidth < barWidth - 10) {
+    if (labelWidth + ageLabelWidth < barWidth - 16) {
       // Label inside bar
       const label = createSVGElement('text', {
         class: 'person-label-inside',
@@ -408,6 +532,23 @@
       });
       label.textContent = person.name;
       g.appendChild(label);
+    }
+    
+    // Age label on right side of bar (for deceased or living, not for faded historical)
+    if (ageLabel && barWidth > 30) {
+      const ageText = createSVGElement('text', {
+        class: 'person-age-label',
+        x: barX2 - 8,
+        y: y + CONFIG.personHeight / 2 + 1,
+        'dominant-baseline': 'middle',
+        'text-anchor': 'end',
+        fill: 'rgba(255, 255, 255, 0.7)',
+        'font-size': '9px',
+        'font-weight': '400',
+        'pointer-events': 'none',
+      });
+      ageText.textContent = ageLabel;
+      g.appendChild(ageText);
     }
     
     svg.appendChild(g);
