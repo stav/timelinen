@@ -22,6 +22,22 @@
   let currentData = null;
   let computedLayout = null;
 
+  // Zoom & pan state
+  let zoomLevel = 1;
+  let panX = 0;
+  let panY = 0;
+  const MIN_ZOOM = 0.25;
+  const MAX_ZOOM = 4;
+  const ZOOM_SENSITIVITY = 0.002;
+  const PAN_SENSITIVITY = 1.5;
+
+  // Drag state
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let panStartX = 0;
+  let panStartY = 0;
+
   // ============ UTILITY FUNCTIONS ============
 
   function parseDate(dateStr) {
@@ -605,21 +621,28 @@
     svg.setAttribute('height', svgHeight);
     svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
 
+    // Create content group for zoom/pan transforms
+    const contentGroup = createSVGElement('g', { id: 'timeline-content' });
+    svg.appendChild(contentGroup);
+
     // Render generation labels (behind everything)
-    renderGenerationLabels(svg, layout);
+    renderGenerationLabels(contentGroup, layout);
 
     // Render people bars
     for (const [personId, personLayout] of Object.entries(layout.personLayout)) {
       const isFocal = personId === familyTree.focalPerson;
-      renderPersonBar(svg, personLayout, startDate, endDate, timelineWidth, isFocal);
+      renderPersonBar(contentGroup, personLayout, startDate, endDate, timelineWidth, isFocal);
     }
 
     // Render connectors on top of bars so they're visible
-    renderConnectors(svg, layout);
+    renderConnectors(contentGroup, layout);
 
     // Render time axis
     const axisY = layout.totalHeight - CONFIG.axisHeight + 10;
-    renderAxis(svg, startDate, endDate, timelineWidth, axisY);
+    renderAxis(contentGroup, startDate, endDate, timelineWidth, axisY);
+
+    // Apply current zoom transform
+    applyZoomTransform();
   }
 
   // ============ DATA LOADING ============
@@ -698,6 +721,7 @@
 
   function init() {
     initDataSelector();
+    initZoomControls();
   }
 
   if (document.readyState === 'loading') {
@@ -713,8 +737,120 @@
     resizeTimeout = setTimeout(renderFamilyTree, 150);
   });
 
+  // Zoom, scroll, and drag controls
+  function initZoomControls() {
+    const container = document.getElementById('timeline-container');
+    if (!container) return;
+
+    // Wheel events: Alt+wheel = zoom, Shift+wheel = horizontal pan, wheel = vertical pan
+    container.addEventListener('wheel', (e) => {
+      const svg = document.getElementById('timeline');
+      if (!svg) return;
+
+      if (e.altKey) {
+        // Alt+wheel: zoom
+        e.preventDefault();
+        
+        const rect = svg.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const delta = -e.deltaY * ZOOM_SENSITIVITY;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * (1 + delta)));
+        
+        if (newZoom === zoomLevel) return;
+        
+        // Zoom toward cursor position
+        const zoomFactor = newZoom / zoomLevel;
+        panX = mouseX - (mouseX - panX) * zoomFactor;
+        panY = mouseY - (mouseY - panY) * zoomFactor;
+        
+        zoomLevel = newZoom;
+        applyZoomTransform();
+      } else if (e.shiftKey) {
+        // Shift+wheel: horizontal pan
+        e.preventDefault();
+        panX -= e.deltaY * PAN_SENSITIVITY;
+        applyZoomTransform();
+      } else {
+        // Regular wheel: vertical pan
+        e.preventDefault();
+        panY -= e.deltaY * PAN_SENSITIVITY;
+        applyZoomTransform();
+      }
+    }, { passive: false });
+
+    // Drag to pan
+    container.addEventListener('mousedown', (e) => {
+      // Only start drag on primary button and not on interactive elements
+      if (e.button !== 0) return;
+      
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      panStartX = panX;
+      panStartY = panY;
+      container.classList.add('dragging');
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      
+      panX = panStartX + dx;
+      panY = panStartY + dy;
+      applyZoomTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        container.classList.remove('dragging');
+      }
+    });
+
+    // Prevent context menu interfering with drag
+    container.addEventListener('contextmenu', (e) => {
+      if (isDragging) e.preventDefault();
+    });
+
+    // Escape key resets view
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        resetZoom();
+      }
+    });
+  }
+
+  function updateViewStats() {
+    const zoomEl = document.getElementById('stat-zoom');
+    const panEl = document.getElementById('stat-pan');
+    
+    if (zoomEl) zoomEl.textContent = zoomLevel.toFixed(2);
+    if (panEl) panEl.textContent = `${Math.round(panX)}, ${Math.round(panY)}`;
+  }
+
+  function applyZoomTransform() {
+    const content = document.getElementById('timeline-content');
+    if (!content) return;
+    
+    content.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoomLevel})`);
+    updateViewStats();
+  }
+
+  function resetZoom() {
+    zoomLevel = 1;
+    panX = 0;
+    panY = 0;
+    applyZoomTransform();
+  }
+
   // Expose for debugging
   window.renderFamilyTree = renderFamilyTree;
   window.loadFamilyTreeFile = loadFamilyTreeFile;
+  window.resetZoom = resetZoom;
 })();
 
