@@ -8,17 +8,17 @@
 
   // Configuration
   const CONFIG = {
-    trackHeight: 80,           // Height per track lane
-    trackPadding: 20,          // Padding between tracks
+    trackHeight: 40,           // Height per track lane
+    trackPadding: 0,           // Padding between tracks
     labelAreaWidth: 160,       // Left margin for track labels
     axisHeight: 50,            // Height of time axis at bottom
-    eventHeight: 20,           // Height of range event pills
-    pointRadius: 6,            // Radius of point events
-    labelRowHeight: 16,        // Height per label row
-    labelPadding: 4,           // Padding around label text
-    labelMargin: 6,            // Margin between labels
+    eventHeight: 16,           // Height of range event pills
+    pointRadius: 5,            // Radius of point events
+    labelRowHeight: 14,        // Height per label row
+    labelPadding: 3,           // Padding around label text
+    labelMargin: 4,            // Margin between labels
     minEventWidth: 8,          // Minimum width for very short range events
-    topPadding: 40,            // Top padding for labels above first track
+    topPadding: 20,            // Top padding for labels above first track
   };
 
   // SVG namespace
@@ -284,14 +284,24 @@
       return computeLabelRows(trackData.events || trackData, startDate, endDate, timelineWidth).length;
     });
 
+    // Check which tracks have any non-null labels
+    const trackHasLabels = tracks.map((track) => {
+      const events = track.events || track;
+      return events.some(e => e.label !== null);
+    });
+
     // Calculate total height
     let totalHeight = CONFIG.topPadding;
     const trackPositions = [];
 
     for (let i = 0; i < numTracks; i++) {
-      const extraLabelSpace = Math.max(0, (trackLabelRows[i] - 1) * CONFIG.labelRowHeight);
+      // Only add extra label space if the track has labels
+      const extraLabelSpace = trackHasLabels[i] ? Math.max(0, (trackLabelRows[i] - 1) * CONFIG.labelRowHeight) : 0;
       trackPositions.push(totalHeight + extraLabelSpace);
-      totalHeight += CONFIG.trackHeight + CONFIG.trackPadding + extraLabelSpace;
+      // Use reduced height for tracks with no labels
+      const effectiveTrackHeight = trackHasLabels[i] ? CONFIG.trackHeight : CONFIG.trackHeight * 0.4;
+      // Don't double-count extraLabelSpace - it's already in trackPositions[i]
+      totalHeight = trackPositions[i] + effectiveTrackHeight + CONFIG.trackPadding;
     }
 
     totalHeight += CONFIG.axisHeight;
@@ -304,13 +314,14 @@
     for (let i = 0; i < numTracks; i++) {
       const trackData = tracks[i].events || tracks[i];
       const trackName = tracks[i].name || null;
+      const effectiveTrackHeight = trackHasLabels[i] ? CONFIG.trackHeight : CONFIG.trackHeight * 0.4;
 
       const g = createSVGElement('g', {
         class: 'track',
         transform: `translate(0, ${trackPositions[i]})`,
       });
 
-      const labelY = CONFIG.trackHeight / 2;
+      const labelY = effectiveTrackHeight / 2;
       
       if (trackName) {
         const trackLabel = createSVGElement('text', {
