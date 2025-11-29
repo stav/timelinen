@@ -83,7 +83,29 @@
   }
 
   /**
+   * Check if a label fits inside a range event
+   * Uses smaller font size for internal labels (9px vs 11px)
+   * @param {string} fallbackLabel - Label to use if event.label is null (e.g., track name)
+   */
+  function labelFitsInRange(event, startDate, endDate, timelineWidth, fallbackLabel = null) {
+    const labelText = event.label !== null ? event.label : fallbackLabel;
+    if (labelText === null) return false;
+    if (event.dates.length < 2) return false; // Point events can't have internal labels
+    
+    const eventStart = parseDate(event.dates[0]);
+    const eventEnd = parseDate(event.dates[1]);
+    const startX = dateToX(eventStart, startDate, endDate, timelineWidth);
+    const endX = dateToX(eventEnd, startDate, endDate, timelineWidth);
+    const pillWidth = Math.max(endX - startX, CONFIG.minEventWidth);
+    // Use smaller font size (9px) for measuring internal labels
+    const labelWidth = measureText(labelText, 9);
+    
+    return labelWidth <= pillWidth - 2; // Allow tighter fit
+  }
+
+  /**
    * Avoid label collisions by stacking into rows
+   * Only includes events whose labels don't fit inside their range
    */
   function computeLabelRows(events, startDate, endDate, timelineWidth) {
     const rows = [];
@@ -97,6 +119,9 @@
     for (const event of sortedEvents) {
       // Skip events with null labels
       if (event.label === null) continue;
+      
+      // Skip range events whose labels fit inside
+      if (labelFitsInRange(event, startDate, endDate, timelineWidth)) continue;
 
       const eventStart = parseDate(event.dates[0]);
       const eventStartX = dateToX(eventStart, startDate, endDate, timelineWidth);
@@ -377,6 +402,20 @@
             : `${event.dates[0]} → ${event.dates[1]}`;
           pill.innerHTML = `<title>${rangeTooltip}</title>`;
           g.appendChild(pill);
+          
+          // Render label inside pill if it fits (use trackName as fallback for null labels)
+          const internalLabelText = event.label !== null ? event.label : trackName;
+          if (labelFitsInRange(event, startDate, endDate, timelineWidth, trackName)) {
+            const internalLabel = createSVGElement('text', {
+              class: 'event-label-internal',
+              x: startX + CONFIG.eventHeight / 2,  // Left-justify with padding for rounded edge
+              y: labelY + 1,
+              'text-anchor': 'start',
+              'dominant-baseline': 'middle',
+            });
+            internalLabel.textContent = internalLabelText;
+            g.appendChild(internalLabel);
+          }
         } else {
           const circle = createSVGElement('circle', {
             class: 'event-point',
