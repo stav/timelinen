@@ -8,7 +8,7 @@
 
 window.familyTree = {
   // Focal person - generation numbers are relative to them (0)
-  focalPerson: "I0021",
+  focalPerson: "I0000",
 
   // All people in the tree
   people: {
