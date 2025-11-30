@@ -13,7 +13,8 @@
     topPadding: 40,            // Top padding
     sidePadding: 40,           // Side padding
     minBarWidth: 40,           // Minimum width for lifespan bars
-    connectorPadding: 15,      // Space between bar bottom and connector start
+    connectorPadding: 16,      // Space between bar bottom and connector start
+    unionOffset: 14,            // Vertical offset for younger partner in union
   };
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -467,10 +468,20 @@
     // Build tracks (only for visible people)
     const { tracks, personToTrack } = buildTracks(familyTree, generations, visiblePeople);
     
-    // Compute Y position for each track
+    // Compute Y position for each track, accounting for union offsets
     const trackY = {};
+    let currentY = CONFIG.topPadding;
+    
     for (let i = 0; i < tracks.length; i++) {
-      trackY[i] = CONFIG.topPadding + i * CONFIG.trackHeight;
+      trackY[i] = currentY;
+      
+      // Calculate if this track has a union offset (affects spacing for next track)
+      const track = tracks[i];
+      const hasUnionOffset = track.people.length === 2;
+      const trackEffectiveHeight = CONFIG.trackHeight + (hasUnionOffset ? CONFIG.unionOffset : 0);
+      
+      // Move to next track position, accounting for this track's effective height
+      currentY += trackEffectiveHeight;
     }
     
     // Position people
@@ -478,15 +489,30 @@
     
     for (let trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
       const track = tracks[trackIdx];
-      const y = trackY[trackIdx];
+      const baseY = trackY[trackIdx];
       
-      for (const personId of track.people) {
+      // For union tracks (2 people), determine who is older/younger
+      let olderFirst = track.people;
+      if (track.people.length === 2) {
+        const [p1, p2] = track.people;
+        const birth1 = parseDate(people[p1].birth).getTime();
+        const birth2 = parseDate(people[p2].birth).getTime();
+        // Sort so older (earlier birth) comes first
+        olderFirst = birth1 <= birth2 ? [p1, p2] : [p2, p1];
+      }
+      
+      for (let i = 0; i < olderFirst.length; i++) {
+        const personId = olderFirst[i];
         const person = people[personId];
         const birthDate = parseDate(person.birth);
         const deathDate = person.death ? parseDate(person.death) : endDate;
         
         const x1 = dateToX(birthDate, startDate, endDate, timelineWidth);
         const x2 = dateToX(deathDate, startDate, endDate, timelineWidth);
+        
+        // Offset younger partner (second in sorted order) slightly down
+        const yOffset = (olderFirst.length === 2 && i === 1) ? CONFIG.unionOffset : 0;
+        const y = baseY + yOffset;
         
         personLayout[personId] = {
           id: personId,
@@ -538,8 +564,9 @@
         parentCenterX = partnerLayouts[0].centerX;
       }
       
-      const parentTrack = partnerLayouts[0];
-      const parentY = parentTrack.y + CONFIG.personHeight;
+      // Use the lowest Y position (for unions, the younger/lower partner)
+      const maxY = Math.max(...partnerLayouts.map(p => p.y));
+      const parentY = maxY + CONFIG.personHeight;
       
       // If union has children and is collapsed, add collapse indicator
       if (hasChildren && isCollapsed) {
@@ -561,7 +588,7 @@
             union,
             parentCenterX,
             parentY,
-            parentTrackIdx: parentTrack.trackIdx,
+            parentTrackIdx: partnerLayouts[0].trackIdx,
             childCenterX: child.barX1,  // Use birth date position, not center
             childY: child.y,
             childTrackIdx: child.trackIdx,
@@ -598,7 +625,7 @@
       minGen,
       maxGen,
       visiblePeople,
-      totalHeight: CONFIG.topPadding + tracks.length * CONFIG.trackHeight + CONFIG.axisHeight,
+      totalHeight: currentY + CONFIG.axisHeight,
     };
   }
 
@@ -847,8 +874,8 @@
         height: 20,
         rx: 10,
         ry: 10,
-        fill: 'rgba(184, 156, 107, 0.2)',
-        stroke: 'rgba(184, 156, 107, 0.5)',
+        fill: 'rgba(184, 156, 107, 0.4)',
+        stroke: 'rgba(184, 156, 107, 0.6)',
         'stroke-width': 1,
       });
       clickGroup.appendChild(pill);
@@ -891,10 +918,14 @@
       
       // Hover effect
       clickGroup.addEventListener('mouseenter', () => {
-        pill.setAttribute('fill', 'rgba(184, 156, 107, 0.4)');
+        pill.setAttribute('fill', 'rgba(184, 156, 107, 1)');
+        plus.setAttribute('fill', '#2a2520');
+        label.setAttribute('fill', '#2a2520');
       });
       clickGroup.addEventListener('mouseleave', () => {
-        pill.setAttribute('fill', 'rgba(184, 156, 107, 0.2)');
+        pill.setAttribute('fill', 'rgba(184, 156, 107, 0.4)');
+        plus.setAttribute('fill', '#c9b896');
+        label.setAttribute('fill', '#c9b896');
       });
       
       g.appendChild(clickGroup);
@@ -927,27 +958,36 @@
         parentCenterX = partnerLayouts[0].centerX;
       }
       
-      const parentY = partnerLayouts[0].y + CONFIG.personHeight;
+      // Use the lowest Y position (for unions, the younger/lower partner)
+      const maxY = Math.max(...partnerLayouts.map(p => p.y));
+      const parentY = maxY + CONFIG.personHeight;
+      const descendantCount = countDescendants(union.id, familyTree);
       
-      // Create collapse button (minus sign)
+      // Create collapse button (minus sign with count)
       const collapseGroup = createSVGElement('g', {
         class: 'collapse-button',
         style: 'cursor: pointer;',
         'data-union-id': union.id,
       });
       
-      const collapsePill = createSVGElement('circle', {
-        cx: parentCenterX,
-        cy: parentY + 8,
-        r: 8,
-        fill: 'rgba(100, 100, 100, 0.2)',
-        stroke: 'rgba(150, 150, 150, 0.4)',
+      // Background pill (same style as collapsed indicator)
+      const pillWidth = 36 + (descendantCount > 9 ? 8 : 0);
+      const collapsePill = createSVGElement('rect', {
+        x: parentCenterX - pillWidth / 2,
+        y: parentY - 2,
+        width: pillWidth,
+        height: 20,
+        rx: 10,
+        ry: 10,
+        fill: 'rgba(100, 100, 100, 0.4)',
+        stroke: 'rgba(150, 150, 150, 0.6)',
         'stroke-width': 1,
       });
       collapseGroup.appendChild(collapsePill);
       
+      // Minus icon
       const minus = createSVGElement('text', {
-        x: parentCenterX,
+        x: parentCenterX - pillWidth / 2 + 10,
         y: parentY + 12,
         fill: 'rgba(200, 200, 200, 0.6)',
         'font-size': '14px',
@@ -958,8 +998,20 @@
       minus.textContent = '−';
       collapseGroup.appendChild(minus);
       
+      // Count label
+      const countLabel = createSVGElement('text', {
+        x: parentCenterX + 4,
+        y: parentY + 11,
+        fill: 'rgba(200, 200, 200, 0.6)',
+        'font-size': '10px',
+        'text-anchor': 'middle',
+        'pointer-events': 'none',
+      });
+      countLabel.textContent = descendantCount.toString();
+      collapseGroup.appendChild(countLabel);
+      
       const collapseTitle = createSVGElement('title');
-      collapseTitle.textContent = `Click to hide ${union.children.length} ${union.children.length === 1 ? 'child' : 'children'}\nCtrl+click to collapse all descendants`;
+      collapseTitle.textContent = `Click to hide ${union.children.length} ${union.children.length === 1 ? 'child' : 'children'} (${descendantCount} total descendants)\nCtrl+click to collapse all descendants`;
       collapseGroup.appendChild(collapseTitle);
       
       // Click handler (Ctrl+click for recursive collapse)
@@ -969,10 +1021,14 @@
       });
       
       collapseGroup.addEventListener('mouseenter', () => {
-        collapsePill.setAttribute('fill', 'rgba(150, 100, 100, 0.3)');
+        collapsePill.setAttribute('fill', 'rgba(100, 100, 100, 1)');
+        minus.setAttribute('fill', '#ffffff');
+        countLabel.setAttribute('fill', '#ffffff');
       });
       collapseGroup.addEventListener('mouseleave', () => {
-        collapsePill.setAttribute('fill', 'rgba(100, 100, 100, 0.2)');
+        collapsePill.setAttribute('fill', 'rgba(100, 100, 100, 0.4)');
+        minus.setAttribute('fill', 'rgba(200, 200, 200, 0.6)');
+        countLabel.setAttribute('fill', 'rgba(200, 200, 200, 0.6)');
       });
       
       g.appendChild(collapseGroup);
