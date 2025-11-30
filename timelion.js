@@ -794,45 +794,65 @@
     
     g.appendChild(bar);
     
-    // Name label (inside bar if fits, otherwise above)
-    const labelWidth = person.name.length * 7;
-    const ageLabelWidth = ageLabel ? ageLabel.length * 7 + 12 : 0; // Extra padding for age
-    const barWidth = barX2 - barX1;
+    // Calculate available space for name (reserve minimal space for age)
+    const leftPadding = 4;
+    const rightPadding = 4; // Reduced right padding for age
+    // Age is positioned at barX2 - rightPadding with text-anchor 'end', so it extends leftward
+    // Reserve minimal space: age text width + tiny gap (1px)
+    const ageLabelWidth = ageLabel ? (ageLabel.length * 5 + 1) : 0; // Age width + 1px gap
+    const nameEndX = ageLabel ? (barX2 - rightPadding - ageLabelWidth) : (barX2 - rightPadding);
+    const availableWidth = nameEndX - (barX1 + leftPadding);
     
-    if (labelWidth + ageLabelWidth < barWidth - 16) {
-      // Label inside bar
-      const label = createSVGElement('text', {
-        class: 'person-label-inside',
-        x: barX1 + 8,
-        y: y + CONFIG.personHeight / 2 + 1,
-        'dominant-baseline': 'middle',
-        fill: '#ffffff',
-        'font-size': '10px',
-        'font-weight': '500',
-        'pointer-events': 'none',
-      });
-      label.textContent = person.name;
-      g.appendChild(label);
+    // Create clipPath for clean text clipping (prevents mid-letter chopping)
+    const clipId = `clip-${id}-${gradientCounter++}`;
+    let defs = svg.querySelector('defs');
+    if (!defs) {
+      defs = createSVGElement('defs');
+      svg.insertBefore(defs, svg.firstChild);
+    }
+    const clipPath = createSVGElement('clipPath', { id: clipId });
+    const clipRect = createSVGElement('rect', {
+      x: barX1 + leftPadding,
+      y: y,
+      width: availableWidth,
+      height: CONFIG.personHeight,
+    });
+    clipPath.appendChild(clipRect);
+    defs.appendChild(clipPath);
+    
+    // Name label (always inside bar, clipped with SVG clipPath)
+    const label = createSVGElement('text', {
+      class: 'person-label-inside',
+      x: barX1 + leftPadding,
+      y: y + CONFIG.personHeight / 2 + 1,
+      'dominant-baseline': 'middle',
+      fill: '#ffffff',
+      'font-size': '10px',
+      'font-weight': '500',
+      'pointer-events': 'none',
+      'clip-path': `url(#${clipId})`,
+    });
+    
+    // Simple truncation: estimate and add ellipsis if needed (minimal JS)
+    // Use a more accurate character width estimate based on average
+    const avgCharWidth = 5; // More accurate for 10px font
+    const ellipsisWidth = 4; // Width of "..." 
+    const maxChars = Math.floor((availableWidth - ellipsisWidth) / avgCharWidth);
+    
+    if (person.name.length * avgCharWidth > availableWidth) {
+      label.textContent = person.name.substring(0, Math.max(1, maxChars)).trim() + '...';
     } else {
-      // Label above bar
-      const label = createSVGElement('text', {
-        class: 'person-label-outside',
-        x: barX1,
-        y: y - 4,
-        fill: '#c9b896',
-        'font-size': '10px',
-        'font-weight': '400',
-        'pointer-events': 'none',
-      });
       label.textContent = person.name;
-      g.appendChild(label);
     }
     
+    g.appendChild(label);
+    
     // Age label on right side of bar (for deceased or living, not for faded historical)
+    const barWidth = barX2 - barX1;
     if (ageLabel && barWidth > 30) {
       const ageText = createSVGElement('text', {
         class: 'person-age-label',
-        x: barX2 - 8,
+        x: barX2 - 4,
         y: y + CONFIG.personHeight / 2 + 1,
         'dominant-baseline': 'middle',
         'text-anchor': 'end',
