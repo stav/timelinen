@@ -646,6 +646,10 @@
     // Born before 1920 and no death date recorded
     const needsFadeOut = !person.death && birthYear < 1920;
     
+    // Check if person is still alive (at present)
+    // Exclude historical persons without death dates (needsFadeOut)
+    const isAlive = !needsFadeOut && (!person.death || parseDate(person.death) >= new Date());
+    
     let fillColor, strokeColor;
     if (isFocal) {
       fillColor = '#4a7c59';
@@ -745,18 +749,46 @@
     }
     
     // Lifespan bar
-    const bar = createSVGElement('rect', {
-      class: 'person-bar',
-      x: barX1,
-      y: y,
-      width: Math.max(effectiveBarX2 - barX1, CONFIG.minBarWidth),
-      height: CONFIG.personHeight,
-      rx: CONFIG.personHeight / 2,
-      ry: CONFIG.personHeight / 2,
-      fill: fill,
-      stroke: strokeFill,
-      'stroke-width': 1.5,
-    });
+    // For living people, use a path with square right end
+    // For deceased people, use a rounded rect
+    const finalBarWidth = Math.max(effectiveBarX2 - barX1, CONFIG.minBarWidth);
+    const radius = CONFIG.personHeight / 2;
+    let bar;
+    
+    if (isAlive && !needsFadeOut) {
+      // Living person: path with rounded left side, square right side
+      const pathData = [
+        `M ${barX1 + radius},${y}`,  // Move to start of top line (after left rounding)
+        `L ${barX1 + finalBarWidth},${y}`, // Line to top right (square corner)
+        `L ${barX1 + finalBarWidth},${y + CONFIG.personHeight}`, // Line to bottom right (square corner)
+        `L ${barX1 + radius},${y + CONFIG.personHeight}`, // Line to start of bottom line (before left rounding)
+        `A ${radius},${radius} 0 0 1 ${barX1},${y + CONFIG.personHeight / 2}`, // Arc to middle-left
+        `A ${radius},${radius} 0 0 1 ${barX1 + radius},${y}`, // Arc back to top-left
+        'Z' // Close path
+      ].join(' ');
+      
+      bar = createSVGElement('path', {
+        class: 'person-bar',
+        d: pathData,
+        fill: fill,
+        stroke: strokeFill,
+        'stroke-width': 1.5,
+      });
+    } else {
+      // Deceased or faded: fully rounded rect
+      bar = createSVGElement('rect', {
+        class: 'person-bar',
+        x: barX1,
+        y: y,
+        width: finalBarWidth,
+        height: CONFIG.personHeight,
+        rx: radius,
+        ry: radius,
+        fill: fill,
+        stroke: strokeFill,
+        'stroke-width': 1.5,
+      });
+    }
     
     // Calculate age
     const birthDate = parseDate(person.birth);
