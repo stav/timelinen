@@ -228,14 +228,63 @@
 
   /**
    * Toggle collapsed state for a union
+   * If recursive is true, also expand/collapse all descendant unions
    */
-  function toggleUnionCollapse(unionId) {
-    if (collapsedUnions.has(unionId)) {
-      collapsedUnions.delete(unionId);
+  function toggleUnionCollapse(unionId, recursive = false) {
+    const isCurrentlyCollapsed = collapsedUnions.has(unionId);
+    
+    if (recursive && currentData && currentData.familyTree) {
+      // Recursively expand or collapse this union and all descendants
+      const unionsToToggle = getDescendantUnions(unionId, currentData.familyTree);
+      unionsToToggle.add(unionId);
+      
+      if (isCurrentlyCollapsed) {
+        // Expand all
+        for (const uid of unionsToToggle) {
+          collapsedUnions.delete(uid);
+        }
+      } else {
+        // Collapse all
+        for (const uid of unionsToToggle) {
+          collapsedUnions.add(uid);
+        }
+      }
     } else {
-      collapsedUnions.add(unionId);
+      // Just toggle this one union
+      if (isCurrentlyCollapsed) {
+        collapsedUnions.delete(unionId);
+      } else {
+        collapsedUnions.add(unionId);
+      }
     }
+    
     renderFamilyTree();
+  }
+
+  /**
+   * Get all descendant union IDs for a given union
+   */
+  function getDescendantUnions(unionId, familyTree) {
+    const descendants = new Set();
+    const union = familyTree.unions.find(u => u.id === unionId);
+    
+    if (!union || !union.children) return descendants;
+    
+    // For each child, find unions where they are a partner
+    for (const childId of union.children) {
+      for (const childUnion of familyTree.unions) {
+        if (childUnion.partners.includes(childId) && childUnion.children && childUnion.children.length > 0) {
+          descendants.add(childUnion.id);
+          // Recursively get descendants of this union
+          const nested = getDescendantUnions(childUnion.id, familyTree);
+          for (const nid of nested) {
+            descendants.add(nid);
+          }
+        }
+      }
+    }
+    
+    return descendants;
   }
 
   /**
@@ -831,13 +880,13 @@
       
       // Tooltip
       const title = createSVGElement('title');
-      title.textContent = `Click to show ${directChildren} ${directChildren === 1 ? 'child' : 'children'} (${count} total descendants)`;
+      title.textContent = `Click to show ${directChildren} ${directChildren === 1 ? 'child' : 'children'} (${count} total descendants)\nCtrl+click to expand all descendants`;
       clickGroup.appendChild(title);
       
-      // Click handler
+      // Click handler (Ctrl+click for recursive expand)
       clickGroup.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleUnionCollapse(unionId);
+        toggleUnionCollapse(unionId, e.ctrlKey || e.metaKey);
       });
       
       // Hover effect
@@ -910,12 +959,13 @@
       collapseGroup.appendChild(minus);
       
       const collapseTitle = createSVGElement('title');
-      collapseTitle.textContent = `Click to hide ${union.children.length} ${union.children.length === 1 ? 'child' : 'children'}`;
+      collapseTitle.textContent = `Click to hide ${union.children.length} ${union.children.length === 1 ? 'child' : 'children'}\nCtrl+click to collapse all descendants`;
       collapseGroup.appendChild(collapseTitle);
       
+      // Click handler (Ctrl+click for recursive collapse)
       collapseGroup.addEventListener('click', (e) => {
         e.stopPropagation();
-        toggleUnionCollapse(union.id);
+        toggleUnionCollapse(union.id, e.ctrlKey || e.metaKey);
       });
       
       collapseGroup.addEventListener('mouseenter', () => {
