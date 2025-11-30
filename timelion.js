@@ -1319,6 +1319,36 @@
     const container = document.getElementById('timeline-container');
     if (!container) return;
 
+    // Cursor guide - simple native transform update
+    const cursorGuide = document.getElementById('cursor-guide');
+    if (cursorGuide) {
+      container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        cursorGuide.style.transform = `translateX(${x}px)`;
+        
+        // Calculate date from X position
+        if (currentData && currentData.visibleWindow) {
+          const timelineWidth = getTimelineWidth();
+          // Account for container padding (1.5rem = 24px) and SVG sidePadding
+          const containerPadding = 24;
+          const svgX = (x - containerPadding - panX) / zoomLevel;
+          const timelineX = svgX - CONFIG.sidePadding;
+          const ratio = timelineX / timelineWidth;
+          
+          if (ratio >= 0 && ratio <= 1) {
+            const startDate = parseDate(currentData.visibleWindow.startDate);
+            const endDate = parseDate(currentData.visibleWindow.endDate);
+            const totalSpan = endDate.getTime() - startDate.getTime();
+            const date = new Date(startDate.getTime() + ratio * totalSpan);
+            cursorGuide.dataset.date = date.getFullYear();
+          } else {
+            cursorGuide.dataset.date = '';
+          }
+        }
+      });
+    }
+
     // Wheel events: Alt+wheel = visual zoom, Ctrl+wheel = time scale zoom, Shift+wheel = horizontal pan, wheel = vertical pan
     container.addEventListener('wheel', (e) => {
       const svg = document.getElementById('timeline');

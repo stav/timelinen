@@ -194,10 +194,43 @@
 
     #timeline-container {
       cursor: grab;
+      position: relative;
     }
 
     #timeline-container.dragging {
       cursor: grabbing;
+    }
+
+    /* Vertical cursor guide */
+    #cursor-guide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 100%;
+      background: rgba(184, 156, 107, 0.5);
+      pointer-events: none;
+      opacity: 0;
+      will-change: transform;
+    }
+
+    #cursor-guide::after {
+      content: attr(data-date);
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'Crimson Pro', serif;
+      font-size: 0.75rem;
+      color: #c9b896;
+      background: rgba(20, 17, 14, 0.9);
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+
+    #timeline-container:hover #cursor-guide {
+      opacity: 1;
     }
 
     /* Scrollbar styling */
@@ -250,6 +283,7 @@
   
   <div id="timeline-container">
     <svg id="timeline"></svg>
+    <div id="cursor-guide"></div>
   </div>
 
   <div class="legend">
