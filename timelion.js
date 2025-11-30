@@ -21,6 +21,11 @@
   let currentData = null;
   let computedLayout = null;
 
+  // Collapsed state - tracks which unions have their children hidden
+  // By default, all unions start collapsed (children rolled up)
+  let collapsedUnions = new Set();
+  let allUnionIds = new Set();
+
   // Zoom & pan state
   let zoomLevel = 1;
   let panX = 0;
@@ -66,6 +71,189 @@
     if (!container) return 800;
     const containerWidth = container.clientWidth - 48;
     return Math.max(containerWidth - CONFIG.sidePadding * 2, 800);
+  }
+
+  // ============ COLLAPSE/EXPAND LOGIC ============
+
+  /**
+   * Initialize collapsed state - ALL unions with children are collapsed by default
+   * The focal person and ancestors will still be visible due to isPersonVisible logic
+   */
+  function initializeCollapsedState(familyTree) {
+    allUnionIds.clear();
+    collapsedUnions.clear();
+    
+    const { unions } = familyTree;
+    
+    // Collapse ALL unions with children by default
+    for (const union of unions) {
+      if (union.children && union.children.length > 0) {
+        allUnionIds.add(union.id);
+        collapsedUnions.add(union.id);
+      }
+    }
+  }
+
+  /**
+   * Get the union that a person is a child of (if any)
+   */
+  function getParentUnion(personId, familyTree) {
+    for (const union of familyTree.unions) {
+      if (union.children && union.children.includes(personId)) {
+        return union;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check if a person should be visible given current collapsed state.
+   * A person is hidden if:
+   * 1. They are a descendant of a collapsed union, OR
+   * 2. They married into the family and ALL their partners are hidden
+   */
+  function isPersonVisible(personId, familyTree, generations, visited = new Set(), ancestorIds = null) {
+    // Prevent infinite recursion
+    if (visited.has(personId)) return false;
+    visited.add(personId);
+    
+    const person = familyTree.people[personId];
+    if (!person) return false;
+    
+    // Build ancestor IDs if not provided (cache for performance)
+    if (ancestorIds === null) {
+      ancestorIds = new Set([familyTree.focalPerson]);
+      const queue = [familyTree.focalPerson];
+      while (queue.length > 0) {
+        const pid = queue.shift();
+        const p = familyTree.people[pid];
+        if (p && p.parentIds) {
+          for (const parentId of p.parentIds) {
+            if (!ancestorIds.has(parentId)) {
+              ancestorIds.add(parentId);
+              queue.push(parentId);
+            }
+          }
+        }
+      }
+    }
+    
+    // Ancestors of the focal person are ALWAYS visible
+    if (ancestorIds.has(personId)) {
+      return true;
+    }
+    
+    // Find the union this person is a child of
+    const parentUnion = getParentUnion(personId, familyTree);
+    
+    if (parentUnion) {
+      // Person is a child of a union in this tree
+      
+      // If parent union is collapsed, this person is hidden
+      if (collapsedUnions.has(parentUnion.id)) return false;
+      
+      // Check if any ancestor in the parent union is also hidden
+      // (cascading collapse - if grandparent union is collapsed, everyone below is hidden)
+      for (const partnerId of parentUnion.partners) {
+        if (!isPersonVisible(partnerId, familyTree, generations, new Set(visited), ancestorIds)) {
+          return false;
+        }
+      }
+      
+      return true;
+    } else {
+      // Person has no parent union - they married INTO the family
+      // They should only be visible if at least one of their partners is visible
+      
+      // Find all unions where this person is a partner
+      const partnerUnions = familyTree.unions.filter(u => u.partners.includes(personId));
+      
+      if (partnerUnions.length === 0) {
+        // Not connected to anyone - hide these orphaned entries
+        return false;
+      }
+      
+      // Check if at least one partner is visible
+      for (const union of partnerUnions) {
+        for (const partnerId of union.partners) {
+          if (partnerId !== personId) {
+            if (isPersonVisible(partnerId, familyTree, generations, new Set(visited), ancestorIds)) {
+              return true;
+            }
+          }
+        }
+      }
+      
+      // All partners are hidden, so hide this spouse too
+      return false;
+    }
+  }
+
+  /**
+   * Get all visible people given current collapsed state
+   */
+  function getVisiblePeople(familyTree, generations) {
+    const visible = new Set();
+    
+    for (const personId of Object.keys(familyTree.people)) {
+      if (isPersonVisible(personId, familyTree, generations)) {
+        visible.add(personId);
+      }
+    }
+    
+    return visible;
+  }
+
+  /**
+   * Count total descendants (including nested) of a union
+   */
+  function countDescendants(unionId, familyTree) {
+    const union = familyTree.unions.find(u => u.id === unionId);
+    if (!union || !union.children) return 0;
+    
+    let count = union.children.length;
+    
+    // Count descendants of each child
+    for (const childId of union.children) {
+      // Find unions where this child is a partner
+      for (const childUnion of familyTree.unions) {
+        if (childUnion.partners.includes(childId) && childUnion.children && childUnion.children.length > 0) {
+          count += countDescendants(childUnion.id, familyTree);
+        }
+      }
+    }
+    
+    return count;
+  }
+
+  /**
+   * Toggle collapsed state for a union
+   */
+  function toggleUnionCollapse(unionId) {
+    if (collapsedUnions.has(unionId)) {
+      collapsedUnions.delete(unionId);
+    } else {
+      collapsedUnions.add(unionId);
+    }
+    renderFamilyTree();
+  }
+
+  /**
+   * Expand all unions (show all descendants)
+   */
+  function expandAll() {
+    collapsedUnions.clear();
+    renderFamilyTree();
+  }
+
+  /**
+   * Collapse all unions (hide all descendants)
+   */
+  function collapseAll() {
+    if (currentData && currentData.familyTree) {
+      initializeCollapsedState(currentData.familyTree);
+      renderFamilyTree();
+    }
   }
 
   // ============ GENERATION COMPUTATION ============
@@ -158,18 +346,21 @@
   /**
    * Build tracks: each person gets their own track, except married couples share a track.
    * Returns array of tracks, each track is { people: [ids], generation, unionId? }
+   * Only includes visible people (respects collapsed state)
    */
-  function buildTracks(familyTree, generations) {
+  function buildTracks(familyTree, generations, visiblePeople) {
     const { people, unions } = familyTree;
     const tracks = [];
     const personToTrack = {}; // personId -> track index
     
-    // First, create tracks for married couples
+    // First, create tracks for married couples (only if both partners are visible)
     for (const union of unions) {
       if (union.partners.length >= 2) {
         const [p1, p2] = union.partners;
-        // Both partners must exist and be in same generation
-        if (people[p1] && people[p2] && generations[p1] === generations[p2]) {
+        // Both partners must exist, be visible, and be in same generation
+        if (people[p1] && people[p2] && 
+            visiblePeople.has(p1) && visiblePeople.has(p2) &&
+            generations[p1] === generations[p2]) {
           const trackIdx = tracks.length;
           tracks.push({
             people: [p1, p2],
@@ -182,9 +373,9 @@
       }
     }
     
-    // Then, create individual tracks for everyone not in a couple track
+    // Then, create individual tracks for everyone not in a couple track (only if visible)
     for (const [personId, person] of Object.entries(people)) {
-      if (personToTrack[personId] === undefined) {
+      if (personToTrack[personId] === undefined && visiblePeople.has(personId)) {
         const trackIdx = tracks.length;
         tracks.push({
           people: [personId],
@@ -221,8 +412,11 @@
     const { people, unions } = familyTree;
     const generations = computeGenerations(familyTree);
     
-    // Build tracks
-    const { tracks, personToTrack } = buildTracks(familyTree, generations);
+    // Get visible people based on collapsed state
+    const visiblePeople = getVisiblePeople(familyTree, generations);
+    
+    // Build tracks (only for visible people)
+    const { tracks, personToTrack } = buildTracks(familyTree, generations, visiblePeople);
     
     // Compute Y position for each track
     const trackY = {};
@@ -262,34 +456,56 @@
       }
     }
     
-    // Compute union connectors
+    // Compute union connectors and collapse indicators
     const unionConnectors = [];
+    const collapsedIndicators = []; // Unions with hidden children
+    
     for (const union of unions) {
       const partnerLayouts = union.partners
         .map(id => personLayout[id])
         .filter(Boolean);
       
-      // Parent-child connectors
+      // Skip if no visible partners
+      if (partnerLayouts.length === 0) continue;
+      
+      // Check if this union has children
+      const hasChildren = union.children && union.children.length > 0;
+      const isCollapsed = collapsedUnions.has(union.id);
+      
+      // Parent-child connectors (only for visible children)
       const childLayouts = (union.children || [])
         .map(id => personLayout[id])
         .filter(Boolean);
       
+      // Calculate parent center point (used for both connectors and collapse indicator)
+      let parentCenterX;
+      if (partnerLayouts.length >= 2) {
+        const p1 = partnerLayouts[0];
+        const p2 = partnerLayouts[1];
+        const overlapStart = Math.max(p1.barX1, p2.barX1);
+        const overlapEnd = Math.min(p1.barX2, p2.barX2);
+        parentCenterX = (overlapStart + overlapEnd) / 2;
+      } else {
+        parentCenterX = partnerLayouts[0].centerX;
+      }
+      
+      const parentTrack = partnerLayouts[0];
+      const parentY = parentTrack.y + CONFIG.personHeight;
+      
+      // If union has children and is collapsed, add collapse indicator
+      if (hasChildren && isCollapsed) {
+        const descendantCount = countDescendants(union.id, familyTree);
+        collapsedIndicators.push({
+          unionId: union.id,
+          x: parentCenterX,
+          y: parentY + 8,
+          count: descendantCount,
+          directChildren: union.children.length,
+        });
+      }
+      
+      // Draw connectors only for visible children
       if (partnerLayouts.length > 0 && childLayouts.length > 0) {
-        const parentTrack = partnerLayouts[0];
-        const parentY = parentTrack.y + CONFIG.personHeight;
-        
-        // Find parent center point (overlap of partners' lifespans)
-        let parentCenterX;
-        if (partnerLayouts.length >= 2) {
-          const p1 = partnerLayouts[0];
-          const p2 = partnerLayouts[1];
-          const overlapStart = Math.max(p1.barX1, p2.barX1);
-          const overlapEnd = Math.min(p1.barX2, p2.barX2);
-          parentCenterX = (overlapStart + overlapEnd) / 2;
-        } else {
-          parentCenterX = partnerLayouts[0].centerX;
-        }
-        
         for (const child of childLayouts) {
           unionConnectors.push({
             type: 'parent-child',
@@ -323,6 +539,7 @@
     return {
       personLayout,
       unionConnectors,
+      collapsedIndicators,
       generations,
       tracks,
       trackY,
@@ -331,6 +548,7 @@
       genFirstTrack,
       minGen,
       maxGen,
+      visiblePeople,
       totalHeight: CONFIG.topPadding + tracks.length * CONFIG.trackHeight + CONFIG.axisHeight,
     };
   }
@@ -553,6 +771,164 @@
     
     svg.appendChild(g);
     return g;
+  }
+
+  /**
+   * Render collapse/expand indicators for unions with hidden children
+   */
+  function renderCollapseIndicators(svg, layout, familyTree) {
+    const g = createSVGElement('g', { class: 'collapse-indicators' });
+    
+    for (const indicator of layout.collapsedIndicators) {
+      const { unionId, x, y, count, directChildren } = indicator;
+      
+      // Create clickable group
+      const clickGroup = createSVGElement('g', {
+        class: 'collapse-indicator',
+        style: 'cursor: pointer;',
+        'data-union-id': unionId,
+      });
+      
+      // Background pill
+      const pillWidth = 36 + (count > 9 ? 8 : 0);
+      const pill = createSVGElement('rect', {
+        x: x - pillWidth / 2,
+        y: y - 10,
+        width: pillWidth,
+        height: 20,
+        rx: 10,
+        ry: 10,
+        fill: 'rgba(184, 156, 107, 0.2)',
+        stroke: 'rgba(184, 156, 107, 0.5)',
+        'stroke-width': 1,
+      });
+      clickGroup.appendChild(pill);
+      
+      // Plus icon
+      const plus = createSVGElement('text', {
+        x: x - pillWidth / 2 + 10,
+        y: y + 4,
+        fill: '#c9b896',
+        'font-size': '14px',
+        'font-weight': 'bold',
+        'text-anchor': 'middle',
+        'pointer-events': 'none',
+      });
+      plus.textContent = '+';
+      clickGroup.appendChild(plus);
+      
+      // Count label
+      const label = createSVGElement('text', {
+        x: x + 4,
+        y: y + 3,
+        fill: '#c9b896',
+        'font-size': '10px',
+        'text-anchor': 'middle',
+        'pointer-events': 'none',
+      });
+      label.textContent = count.toString();
+      clickGroup.appendChild(label);
+      
+      // Tooltip
+      const title = createSVGElement('title');
+      title.textContent = `Click to show ${directChildren} ${directChildren === 1 ? 'child' : 'children'} (${count} total descendants)`;
+      clickGroup.appendChild(title);
+      
+      // Click handler
+      clickGroup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleUnionCollapse(unionId);
+      });
+      
+      // Hover effect
+      clickGroup.addEventListener('mouseenter', () => {
+        pill.setAttribute('fill', 'rgba(184, 156, 107, 0.4)');
+      });
+      clickGroup.addEventListener('mouseleave', () => {
+        pill.setAttribute('fill', 'rgba(184, 156, 107, 0.2)');
+      });
+      
+      g.appendChild(clickGroup);
+    }
+    
+    // Also render "collapse" buttons for expanded unions with visible children
+    for (const union of familyTree.unions) {
+      if (!union.children || union.children.length === 0) continue;
+      if (collapsedUnions.has(union.id)) continue; // Already collapsed
+      
+      // Check if at least one partner is visible
+      const visiblePartners = union.partners.filter(id => layout.personLayout[id]);
+      if (visiblePartners.length === 0) continue;
+      
+      // Check if at least one child is visible
+      const visibleChildren = union.children.filter(id => layout.personLayout[id]);
+      if (visibleChildren.length === 0) continue;
+      
+      const partnerLayouts = visiblePartners.map(id => layout.personLayout[id]);
+      
+      // Calculate center point
+      let parentCenterX;
+      if (partnerLayouts.length >= 2) {
+        const p1 = partnerLayouts[0];
+        const p2 = partnerLayouts[1];
+        const overlapStart = Math.max(p1.barX1, p2.barX1);
+        const overlapEnd = Math.min(p1.barX2, p2.barX2);
+        parentCenterX = (overlapStart + overlapEnd) / 2;
+      } else {
+        parentCenterX = partnerLayouts[0].centerX;
+      }
+      
+      const parentY = partnerLayouts[0].y + CONFIG.personHeight;
+      
+      // Create collapse button (minus sign)
+      const collapseGroup = createSVGElement('g', {
+        class: 'collapse-button',
+        style: 'cursor: pointer;',
+        'data-union-id': union.id,
+      });
+      
+      const collapsePill = createSVGElement('circle', {
+        cx: parentCenterX,
+        cy: parentY + 8,
+        r: 8,
+        fill: 'rgba(100, 100, 100, 0.2)',
+        stroke: 'rgba(150, 150, 150, 0.4)',
+        'stroke-width': 1,
+      });
+      collapseGroup.appendChild(collapsePill);
+      
+      const minus = createSVGElement('text', {
+        x: parentCenterX,
+        y: parentY + 12,
+        fill: 'rgba(200, 200, 200, 0.6)',
+        'font-size': '14px',
+        'font-weight': 'bold',
+        'text-anchor': 'middle',
+        'pointer-events': 'none',
+      });
+      minus.textContent = '−';
+      collapseGroup.appendChild(minus);
+      
+      const collapseTitle = createSVGElement('title');
+      collapseTitle.textContent = `Click to hide ${union.children.length} ${union.children.length === 1 ? 'child' : 'children'}`;
+      collapseGroup.appendChild(collapseTitle);
+      
+      collapseGroup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleUnionCollapse(union.id);
+      });
+      
+      collapseGroup.addEventListener('mouseenter', () => {
+        collapsePill.setAttribute('fill', 'rgba(150, 100, 100, 0.3)');
+      });
+      collapseGroup.addEventListener('mouseleave', () => {
+        collapsePill.setAttribute('fill', 'rgba(100, 100, 100, 0.2)');
+      });
+      
+      g.appendChild(collapseGroup);
+    }
+    
+    svg.appendChild(g);
   }
 
   function renderConnectors(svg, layout) {
@@ -779,6 +1155,9 @@
 
     // Render connectors on top of bars so they're visible
     renderConnectors(contentGroup, layout);
+    
+    // Render collapse/expand indicators
+    renderCollapseIndicators(contentGroup, layout, familyTree);
 
     // Render time axis
     const axisY = layout.totalHeight - CONFIG.axisHeight + 10;
@@ -804,6 +1183,9 @@
         startDate: window.visibleWindow.startDate,
         endDate: window.visibleWindow.endDate,
       };
+      
+      // Initialize collapsed state - all unions collapsed by default
+      initializeCollapsedState(window.familyTree);
       
       renderFamilyTree();
     } else {
@@ -962,10 +1344,16 @@
       if (isDragging) e.preventDefault();
     });
 
-    // Escape key resets view
+    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         resetZoom();
+      } else if (e.key === 'e' || e.key === 'E') {
+        // E = Expand all
+        expandAll();
+      } else if (e.key === 'c' || e.key === 'C') {
+        // C = Collapse all (to initial state)
+        collapseAll();
       }
     });
   }
@@ -1016,8 +1404,11 @@
     }
   }
 
-  // Expose for debugging
+  // Expose for debugging and external control
   window.renderFamilyTree = renderFamilyTree;
   window.resetZoom = resetZoom;
+  window.expandAll = expandAll;
+  window.collapseAll = collapseAll;
+  window.toggleUnionCollapse = toggleUnionCollapse;
 })();
 
