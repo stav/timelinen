@@ -634,8 +634,28 @@
   // Counter for unique gradient IDs
   let gradientCounter = 0;
 
-  function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, isFocal = false) {
-    const { id, person, x, y, width, barX1, barX2 } = layout;
+  /**
+   * Get color for a generation based on rainbow palette
+   * Red (oldest) → Orange → Yellow → Green → Blue → Purple
+   */
+  function getGenerationColor(generation, minGen) {
+    const rainbowColors = [
+      { fill: '#c94a4a', stroke: '#e66a6a' }, // Red
+      { fill: '#d97a3a', stroke: '#f59a5a' }, // Orange
+      { fill: '#b8952a', stroke: '#d9b54a' }, // Yellow (darker for better text contrast)
+      { fill: '#4a7c59', stroke: '#7cb890' }, // Green
+      { fill: '#3d5a80', stroke: '#5d8ab4' }, // Blue
+      { fill: '#6a4a8a', stroke: '#8a6aaa' }, // Purple
+    ];
+    
+    // Map generation to color index (oldest generation = red, then cycle through)
+    const genOffset = generation - minGen;
+    const colorIndex = genOffset % rainbowColors.length;
+    return rainbowColors[colorIndex];
+  }
+
+  function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, minGen, isFocal = false) {
+    const { id, person, x, y, width, barX1, barX2, generation } = layout;
     const g = createSVGElement('g', { class: 'person' });
     
     // Determine bar style
@@ -650,17 +670,10 @@
     // Exclude historical persons without death dates (needsFadeOut)
     const isAlive = !needsFadeOut && (!person.death || parseDate(person.death) >= new Date());
     
-    let fillColor, strokeColor;
-    if (isFocal) {
-      fillColor = '#4a7c59';
-      strokeColor = '#7cb890';
-    } else if (isDeceased || needsFadeOut) {
-      fillColor = '#3d5a80';
-      strokeColor = '#5d8ab4';
-    } else {
-      fillColor = '#4a6670';
-      strokeColor = '#6a9aaa';
-    }
+    // Get colors based on generation
+    const genColors = getGenerationColor(generation, minGen);
+    let fillColor = genColors.fill;
+    let strokeColor = genColors.stroke;
     
     let fill = fillColor;
     let strokeFill = strokeColor;
@@ -1308,7 +1321,7 @@
     // Render people bars
     for (const [personId, personLayout] of Object.entries(layout.personLayout)) {
       const isFocal = personId === familyTree.focalPerson;
-      renderPersonBar(contentGroup, personLayout, startDate, endDate, timelineWidth, isFocal);
+      renderPersonBar(contentGroup, personLayout, startDate, endDate, timelineWidth, layout.minGen, isFocal);
     }
 
     // Render connectors on top of bars so they're visible
