@@ -267,6 +267,22 @@
       border: 1px solid rgba(184, 156, 107, 0.2);
       font-family: inherit;
     }
+
+    /* Union highlight animation */
+    .union-highlight {
+      animation: pulse-highlight 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-highlight {
+      0%, 100% {
+        opacity: 0.8;
+        r: 30;
+      }
+      50% {
+        opacity: 1;
+        r: 35;
+      }
+    }
   </style>
 </head>
 <body>

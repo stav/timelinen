@@ -21,6 +21,7 @@
 
   let currentData = null;
   let computedLayout = null;
+  let highlightedUnionId = null; // Track currently highlighted union
 
   // Collapsed state - tracks which unions have their children hidden
   // By default, all unions start collapsed (children rolled up)
@@ -534,6 +535,7 @@
     // Compute union connectors and collapse indicators
     const unionConnectors = [];
     const collapsedIndicators = []; // Unions with hidden children
+    const unionPositions = {}; // Store positions for all unions (for anchor points)
     
     for (const union of unions) {
       const partnerLayouts = union.partners
@@ -567,6 +569,13 @@
       // Use the lowest Y position (for unions, the younger/lower partner)
       const maxY = Math.max(...partnerLayouts.map(p => p.y));
       const parentY = maxY + CONFIG.personHeight;
+      
+      // Store union position for anchor point creation (even if no children visible)
+      unionPositions[union.id] = {
+        union,
+        parentCenterX,
+        parentY,
+      };
       
       // If union has children and is collapsed, add collapse indicator
       if (hasChildren && isCollapsed) {
@@ -616,6 +625,7 @@
       personLayout,
       unionConnectors,
       collapsedIndicators,
+      unionPositions, // All union positions for anchor points
       generations,
       tracks,
       trackY,
@@ -655,7 +665,7 @@
   }
 
   function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, minGen, isFocal = false, familyTree = null, fullLayout = null) {
-    const { id, person, x, y, width, barX1, barX2, generation } = layout;
+    const { id, person, x, y, width, barX1, barX2, generation, centerX } = layout;
     const g = createSVGElement('g', { class: 'person' });
     
     // Determine bar style
@@ -920,11 +930,18 @@
           .map(pid => fullLayout.personLayout[pid])
           .filter(Boolean);
         
-        if (parentPartners.length > 0) {
-          // Calculate parent union center position
-          let parentCenterX;
-          let parentY;
-          
+        // Try to find union connector position (works even if parents aren't visible)
+        let parentCenterX, parentY;
+        const unionConnector = fullLayout.unionConnectors.find(
+          c => c.union && c.union.id === parentUnion.id
+        );
+        
+        if (unionConnector) {
+          // Use connector position (works even if parents are hidden)
+          parentCenterX = unionConnector.parentCenterX;
+          parentY = unionConnector.parentY;
+        } else if (parentPartners.length > 0) {
+          // Calculate from visible parent partners
           if (parentPartners.length >= 2) {
             // For couples, use overlap center
             const p1 = parentPartners[0];
@@ -938,8 +955,17 @@
             parentCenterX = parentPartners[0].centerX;
             parentY = parentPartners[0].y + CONFIG.personHeight;
           }
-          
-          // Create SVG anchor link to parent union
+        } else {
+          // Parents not visible and no connector - estimate position based on child
+          // Position above the child, accounting for generation difference
+          parentCenterX = centerX || (barX1 + barX2) / 2; // Use center of current person's bar
+          parentY = y - CONFIG.trackHeight; // Approximate position one generation up
+        }
+        
+        // Always show button if we have a parent union (position will be calculated or estimated)
+        // parentCenterX and parentY are always set in one of the branches above
+        
+        // Create SVG anchor link to parent union
           const unionAnchorId = `union-${parentUnion.id}`;
           const linkElement = createSVGElement('a', {
             href: `#${unionAnchorId}`,
@@ -947,31 +973,10 @@
             style: 'opacity: 0; pointer-events: none; transition: opacity 0.2s ease;',
           });
           
-          // Find the current person's union and partner to position button on partner's bar
-          let buttonX, buttonY;
-          const currentPersonUnion = familyTree.unions.find(u => 
-            u.partners.includes(id) && u.partners.length >= 2
-          );
-          
-          if (currentPersonUnion) {
-            // Find the partner (the other person in the union)
-            const partnerId = currentPersonUnion.partners.find(pid => pid !== id);
-            const partnerLayout = fullLayout.personLayout[partnerId];
-            
-            if (partnerLayout) {
-              // Position button on partner's bar
-              buttonY = partnerLayout.y + 10;
-              buttonX = partnerLayout.barX1 + (partnerLayout.barX2 - partnerLayout.barX1) / 2;
-            } else {
-              // Fallback to current person's bar if partner not found
-              buttonY = y + 10;
-              buttonX = barX1 + (barX2 - barX1) / 2;
-            }
-          } else {
-            // No partner union, position on current person's bar
-            buttonY = y + 10;
-            buttonX = barX1 + (barX2 - barX1) / 2;
-          }
+          // Position button on the current person's bar
+          // This ensures it always appears regardless of birth order
+          const buttonY = y + 10;
+          const buttonX = barX1 + (barX2 - barX1) / 2;
           
           // Create hover button group
           const hoverButtonGroup = createSVGElement('g', {
@@ -1019,6 +1024,7 @@
             arrowPath.setAttribute('fill', '#2a2520');
           });
           
+          // Append button to person group (will be moved to top layer later)
           g.appendChild(linkElement);
           
           // Show button on person bar hover
@@ -1062,10 +1068,11 @@
             scrollToPosition(parentCenterX, parentY);
             // Update URL hash for browser history
             window.location.hash = unionAnchorId;
+            // Highlight the parent union
+            highlightUnion(parentUnion.id);
           });
-        }
-      }
-    }
+      } // End of "if (parentUnion)"
+    } // End of "if (familyTree && fullLayout)"
     
     svg.appendChild(g);
     return g;
@@ -1274,11 +1281,10 @@
       }
     }
     
-    // Draw connectors for each union
-    for (const [unionId, connectors] of Object.entries(connectorsByUnion)) {
-      if (connectors.length === 0) continue;
-      
-      const { parentCenterX, parentY } = connectors[0];
+    // Create anchor points and highlights for ALL unions (not just ones with connectors)
+    // This ensures all unions are linkable even if they have no visible children
+    for (const [unionId, unionPos] of Object.entries(layout.unionPositions || {})) {
+      const { parentCenterX, parentY } = unionPos;
       
       // Add invisible anchor point for linking to this union
       const anchorPoint = createSVGElement('circle', {
@@ -1286,10 +1292,33 @@
         cx: parentCenterX,
         cy: parentY - 40,
         r: 10,
-        // fill: 'transparent',
+        fill: 'transparent',
         'pointer-events': 'none',
       });
       g.appendChild(anchorPoint);
+      
+      // Add highlight element (initially hidden)
+      const highlight = createSVGElement('circle', {
+        id: `union-highlight-${unionId}`,
+        cx: parentCenterX,
+        cy: parentY - 40,
+        r: 25,
+        fill: 'none',
+        stroke: 'rgba(212, 196, 168, 0.8)',
+        'stroke-width': 3,
+        'stroke-dasharray': '5,5',
+        opacity: 0,
+        'pointer-events': 'none',
+        style: 'transition: opacity 0.3s ease, r 0.3s ease;',
+      });
+      g.appendChild(highlight);
+    }
+    
+    // Draw connectors for each union
+    for (const [unionId, connectors] of Object.entries(connectorsByUnion)) {
+      if (connectors.length === 0) continue;
+      
+      const { parentCenterX, parentY } = connectors[0];
       
       // Horizontal line Y is just below the parent track (in the gap between generations)
       const horizontalY = parentY + CONFIG.connectorPadding;
@@ -1497,6 +1526,15 @@
     
     // Render collapse/expand indicators
     renderCollapseIndicators(contentGroup, layout, familyTree);
+    
+    // Move all parent union buttons to a separate group rendered last (brings them to front)
+    const buttonsGroup = createSVGElement('g', { class: 'parent-union-buttons' });
+    const allButtons = contentGroup.querySelectorAll('.parent-union-link');
+    for (const button of allButtons) {
+      button.parentNode.removeChild(button);
+      buttonsGroup.appendChild(button);
+    }
+    contentGroup.appendChild(buttonsGroup);
 
     // Render time axis
     const axisY = layout.totalHeight - CONFIG.axisHeight + 10;
@@ -1806,6 +1844,40 @@
     
     // Apply the transform
     applyZoomTransform();
+  }
+
+  /**
+   * Highlight a union by showing its highlight element
+   */
+  function highlightUnion(unionId) {
+    // Remove previous highlight
+    if (highlightedUnionId && highlightedUnionId !== unionId) {
+      const prevHighlight = document.getElementById(`union-highlight-${highlightedUnionId}`);
+      if (prevHighlight) {
+        prevHighlight.setAttribute('opacity', '0');
+        prevHighlight.setAttribute('r', '25');
+        prevHighlight.removeAttribute('class'); // Remove animation class
+      }
+    }
+    
+    // Show new highlight
+    const highlight = document.getElementById(`union-highlight-${unionId}`);
+    if (highlight) {
+      highlight.setAttribute('opacity', '1');
+      highlight.setAttribute('r', '30');
+      highlight.setAttribute('class', 'union-highlight'); // Add animation class
+      highlightedUnionId = unionId;
+      
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        if (highlightedUnionId === unionId) {
+          highlight.setAttribute('opacity', '0');
+          highlight.setAttribute('r', '25');
+          highlight.removeAttribute('class'); // Remove animation class
+          highlightedUnionId = null;
+        }
+      }, 3000);
+    }
   }
 
   function resetZoom() {
