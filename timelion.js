@@ -654,7 +654,7 @@
     return rainbowColors[colorIndex];
   }
 
-  function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, minGen, isFocal = false) {
+  function renderPersonBar(svg, layout, startDate, endDate, timelineWidth, minGen, isFocal = false, familyTree = null, fullLayout = null) {
     const { id, person, x, y, width, barX1, barX2, generation } = layout;
     const g = createSVGElement('g', { class: 'person' });
     
@@ -910,6 +910,163 @@
       g.appendChild(ageText);
     }
     
+    // Add hover button to link to parent union
+    if (familyTree && fullLayout) {
+      const parentUnion = getParentUnion(id, familyTree);
+      
+      if (parentUnion) {
+        // Find parent union partners in layout
+        const parentPartners = parentUnion.partners
+          .map(pid => fullLayout.personLayout[pid])
+          .filter(Boolean);
+        
+        if (parentPartners.length > 0) {
+          // Calculate parent union center position
+          let parentCenterX;
+          let parentY;
+          
+          if (parentPartners.length >= 2) {
+            // For couples, use overlap center
+            const p1 = parentPartners[0];
+            const p2 = parentPartners[1];
+            const overlapStart = Math.max(p1.barX1, p2.barX1);
+            const overlapEnd = Math.min(p1.barX2, p2.barX2);
+            parentCenterX = (overlapStart + overlapEnd) / 2;
+            parentY = Math.max(p1.y, p2.y) + CONFIG.personHeight;
+          } else {
+            // Single parent
+            parentCenterX = parentPartners[0].centerX;
+            parentY = parentPartners[0].y + CONFIG.personHeight;
+          }
+          
+          // Create SVG anchor link to parent union
+          const unionAnchorId = `union-${parentUnion.id}`;
+          const linkElement = createSVGElement('a', {
+            href: `#${unionAnchorId}`,
+            class: 'parent-union-link',
+            style: 'opacity: 0; pointer-events: none; transition: opacity 0.2s ease;',
+          });
+          
+          // Find the current person's union and partner to position button on partner's bar
+          let buttonX, buttonY;
+          const currentPersonUnion = familyTree.unions.find(u => 
+            u.partners.includes(id) && u.partners.length >= 2
+          );
+          
+          if (currentPersonUnion) {
+            // Find the partner (the other person in the union)
+            const partnerId = currentPersonUnion.partners.find(pid => pid !== id);
+            const partnerLayout = fullLayout.personLayout[partnerId];
+            
+            if (partnerLayout) {
+              // Position button on partner's bar
+              buttonY = partnerLayout.y + 10;
+              buttonX = partnerLayout.barX1 + (partnerLayout.barX2 - partnerLayout.barX1) / 2;
+            } else {
+              // Fallback to current person's bar if partner not found
+              buttonY = y + 10;
+              buttonX = barX1 + (barX2 - barX1) / 2;
+            }
+          } else {
+            // No partner union, position on current person's bar
+            buttonY = y + 10;
+            buttonX = barX1 + (barX2 - barX1) / 2;
+          }
+          
+          // Create hover button group
+          const hoverButtonGroup = createSVGElement('g', {
+            class: 'parent-union-button',
+          });
+          
+          // Background circle/pill
+          const buttonBg = createSVGElement('circle', {
+            cx: buttonX,
+            cy: buttonY,
+            r: 10,
+            fill: 'rgba(184, 156, 107, 0.9)',
+            stroke: 'rgba(212, 196, 168, 1)',
+            'stroke-width': 1.5,
+          });
+          hoverButtonGroup.appendChild(buttonBg);
+          
+          // Arrow icon pointing up
+          const arrowPath = createSVGElement('path', {
+            d: `M ${buttonX} ${buttonY - 3} L ${buttonX - 4} ${buttonY + 2} L ${buttonX + 4} ${buttonY + 2} Z`,
+            fill: '#2a2520',
+            'pointer-events': 'none',
+          });
+          hoverButtonGroup.appendChild(arrowPath);
+          
+          // Tooltip with parent names
+          const title = createSVGElement('title');
+          let tooltipText = 'Go to parent union';
+          if (parentPartners.length > 0) {
+            const parentNames = parentPartners.map(p => p.person.name).join(' & ');
+            tooltipText = `Go to parent union: ${parentNames}`;
+          }
+          title.textContent = tooltipText;
+          hoverButtonGroup.appendChild(title);
+          
+          linkElement.appendChild(hoverButtonGroup);
+          
+          // Hover effects
+          hoverButtonGroup.addEventListener('mouseenter', () => {
+            buttonBg.setAttribute('fill', 'rgba(212, 196, 168, 1)');
+            arrowPath.setAttribute('fill', '#1a1612');
+          });
+          hoverButtonGroup.addEventListener('mouseleave', () => {
+            buttonBg.setAttribute('fill', 'rgba(184, 156, 107, 0.9)');
+            arrowPath.setAttribute('fill', '#2a2520');
+          });
+          
+          g.appendChild(linkElement);
+          
+          // Show button on person bar hover
+          let hoverTimeout = null;
+          
+          const showButton = () => {
+            if (hoverTimeout) {
+              clearTimeout(hoverTimeout);
+              hoverTimeout = null;
+            }
+            linkElement.setAttribute('style', 'opacity: 1; pointer-events: all; transition: opacity 0.2s ease; cursor: pointer;');
+          };
+          
+          const hideButton = () => {
+            hoverTimeout = setTimeout(() => {
+              linkElement.setAttribute('style', 'opacity: 0; pointer-events: none; transition: opacity 0.2s ease;');
+            }, 100); // Small delay to allow moving to button
+          };
+          
+          g.addEventListener('mouseenter', showButton);
+          g.addEventListener('mouseleave', hideButton);
+          
+          // Keep button visible when hovering over it
+          linkElement.addEventListener('mouseenter', () => {
+            if (hoverTimeout) {
+              clearTimeout(hoverTimeout);
+              hoverTimeout = null;
+            }
+            showButton();
+          });
+          
+          linkElement.addEventListener('mouseleave', hideButton);
+          
+          // Handle click to scroll to union
+          // We use the anchor for href (browser history/bookmarking) but handle scroll manually
+          // because scrollIntoView doesn't work well with SVG transforms
+          linkElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Use our custom scroll function with the calculated position
+            scrollToPosition(parentCenterX, parentY);
+            // Update URL hash for browser history
+            window.location.hash = unionAnchorId;
+          });
+        }
+      }
+    }
+    
     svg.appendChild(g);
     return g;
   }
@@ -1123,6 +1280,17 @@
       
       const { parentCenterX, parentY } = connectors[0];
       
+      // Add invisible anchor point for linking to this union
+      const anchorPoint = createSVGElement('circle', {
+        id: `union-${unionId}`,
+        cx: parentCenterX,
+        cy: parentY - 40,
+        r: 10,
+        // fill: 'transparent',
+        'pointer-events': 'none',
+      });
+      g.appendChild(anchorPoint);
+      
       // Horizontal line Y is just below the parent track (in the gap between generations)
       const horizontalY = parentY + CONFIG.connectorPadding;
       
@@ -1321,7 +1489,7 @@
     // Render people bars
     for (const [personId, personLayout] of Object.entries(layout.personLayout)) {
       const isFocal = personId === familyTree.focalPerson;
-      renderPersonBar(contentGroup, personLayout, startDate, endDate, timelineWidth, layout.minGen, isFocal);
+      renderPersonBar(contentGroup, personLayout, startDate, endDate, timelineWidth, layout.minGen, isFocal, familyTree, layout);
     }
 
     // Render connectors on top of bars so they're visible
@@ -1588,6 +1756,56 @@
     
     content.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoomLevel})`);
     updateViewStats();
+  }
+
+  /**
+   * Scroll/pan to a specific position in the timeline
+   */
+  function scrollToPosition(targetX, targetY) {
+    if (!computedLayout) return;
+    
+    const container = document.getElementById('timeline-container');
+    if (!container) return;
+    
+    const svg = document.getElementById('timeline');
+    if (!svg) return;
+    
+    // Get the content group that has the transform
+    const contentGroup = document.getElementById('timeline-content');
+    if (!contentGroup) return;
+    
+    // Get container dimensions
+    const containerRect = container.getBoundingClientRect();
+    const containerWidth = containerRect.width;
+    const containerHeight = containerRect.height;
+    
+    // Get SVG dimensions and position
+    const svgRect = svg.getBoundingClientRect();
+    const svgWidth = svgRect.width;
+    const svgHeight = svgRect.height;
+    
+    // The SVG has a viewBox matching its dimensions, so coordinates are 1:1
+    // The content group transform is: translate(panX, panY) scale(zoomLevel)
+    // 
+    // A point at (targetX, targetY) in SVG coordinates, after transform, appears at:
+    //   screenX (relative to SVG) = (targetX * zoomLevel) + panX
+    //   screenY (relative to SVG) = (targetY * zoomLevel) + panY
+    //
+    // We want this point to appear at the center of the visible SVG area
+    // The center of the SVG (in screen coordinates relative to SVG) is:
+    const svgCenterX = svgWidth / 2;
+    const svgCenterY = svgHeight / 2;
+    
+    // So we need:
+    //   svgCenterX = (targetX * zoomLevel) + panX
+    //   svgCenterY = (targetY * zoomLevel) + panY
+    //
+    // Solving for panX and panY:
+    panX = svgCenterX - (targetX * zoomLevel);
+    panY = svgCenterY - (targetY * zoomLevel);
+    
+    // Apply the transform
+    applyZoomTransform();
   }
 
   function resetZoom() {
